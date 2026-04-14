@@ -183,18 +183,6 @@ streamlit run app/demo.py
 
 ---
 
-## 🎯 Expected Results
-
-| Model | mAP@50 | mAP@50-95 | FPS |
-|-------|--------|-----------|-----|
-| YOLOv11 baseline | ~48% | ~28% | ~120 |
-| RT-DETRv2 baseline | ~51% | ~30% | ~45 |
-| YOLOv11 + all improvements | ~56% | ~34% | ~110 |
-
-*(Results will be updated as training runs complete)*
-
----
-
 ## ✅ Progress & Next Steps
 
 ### Completed ✔️
