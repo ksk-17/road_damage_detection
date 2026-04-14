@@ -1,0 +1,60 @@
+# configs/ablation.yaml
+# Ablation Study Configuration
+# Tests each improvement independently and combined
+
+base_config: configs/yolov11_baseline.yaml
+
+experiments:
+  - name: baseline
+    description: "YOLOv11 vanilla — CIoU, 3 FPN scales, no domain adapt"
+    overrides:
+      model.fpn_scales: 3
+      loss.box: ciou
+      augmentation.domain_randomization: false
+
+  - name: fpn4_only
+    description: "Ablation A: Only extra FPN P2 head"
+    overrides:
+      model.fpn_scales: 4
+      loss.box: ciou
+      augmentation.domain_randomization: false
+
+  - name: focal_wiou_only
+    description: "Ablation B: Only Focal+WIoU loss"
+    overrides:
+      model.fpn_scales: 3
+      loss.box: focal_wiou
+      loss.cls: focal
+      augmentation.domain_randomization: false
+
+  - name: domain_adapt_only
+    description: "Ablation C: Only domain randomization augmentation"
+    overrides:
+      model.fpn_scales: 3
+      loss.box: ciou
+      augmentation.domain_randomization: true
+
+  - name: fpn4_focal_wiou
+    description: "Ablation D: FPN4 + Focal+WIoU (no domain adapt)"
+    overrides:
+      model.fpn_scales: 4
+      loss.box: focal_wiou
+      loss.cls: focal
+      augmentation.domain_randomization: false
+
+  - name: full_improved
+    description: "All improvements: FPN4 + Focal+WIoU + Domain Adapt"
+    overrides:
+      model.fpn_scales: 4
+      loss.box: focal_wiou
+      loss.cls: focal
+      augmentation.domain_randomization: true
+
+evaluation:
+  metrics: [mAP50, mAP50_95, precision, recall, f1]
+  per_class: true
+  cross_country: true
+  countries: [Japan, India, USA]
+  output_dir: ./runs/ablation
+  generate_plots: true
+  generate_table: true
