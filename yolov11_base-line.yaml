@@ -1,0 +1,74 @@
+# configs/yolov11_baseline.yaml
+# YOLOv11 Baseline Configuration — RDD2022
+
+model:
+  name: yolov11
+  variant: yolo11m            # nano/small/medium/large/xlarge
+  pretrained: true
+  pretrained_weights: yolo11m.pt
+  num_classes: 4
+  class_names: [D00, D10, D20, D40]
+  fpn_scales: 3               # Baseline: 3 FPN scales (P3, P4, P5)
+
+dataset:
+  root: ./data/rdd2022
+  train_countries: [Japan]    # Primary training set
+  val_countries: [Japan]
+  test_countries: [Japan, India, USA]
+  image_size: 640
+  cache: true
+
+training:
+  epochs: 100
+  batch_size: 16
+  num_workers: 8
+  device: cuda                # or cpu / mps
+
+optimizer:
+  name: AdamW
+  lr: 0.001
+  weight_decay: 0.0005
+  momentum: 0.937
+
+scheduler:
+  name: cosine
+  warmup_epochs: 3
+  min_lr: 1.0e-5
+
+loss:
+  box: ciou                   # Baseline: CIoU (improved variants: wiou, focal_wiou)
+  cls: bce
+  obj: bce
+  box_weight: 7.5
+  cls_weight: 0.5
+  obj_weight: 1.0
+
+augmentation:
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
+  degrees: 5.0
+  translate: 0.1
+  scale: 0.5
+  fliplr: 0.5
+  flipud: 0.0
+  mosaic: 1.0
+  mixup: 0.1
+  copy_paste: 0.1
+  domain_randomization: false  # Baseline: off
+
+evaluation:
+  conf_threshold: 0.25
+  iou_threshold: 0.45
+  max_det: 300
+
+logging:
+  project: road_damage_detection
+  name: yolov11_baseline
+  save_dir: ./runs
+  tensorboard: true
+  wandb: false
+
+output:
+  save_dir: ./runs/yolov11_baseline
+  save_period: 10             # Save checkpoint every N epochs
