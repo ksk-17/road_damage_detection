@@ -1,0 +1,76 @@
+# configs/rtdetr_baseline.yaml
+# RT-DETRv2 Baseline Configuration — RDD2022
+
+model:
+  name: rtdetrv2
+  variant: rtdetr-l            # rtdetr-s / rtdetr-m / rtdetr-l / rtdetr-x
+  pretrained: true
+  pretrained_weights: rtdetr-l.pt
+  num_classes: 4
+  class_names: [D00, D10, D20, D40]
+  num_queries: 300             # Object queries for transformer decoder
+  num_decoder_layers: 6
+  hidden_dim: 256
+
+dataset:
+  root: ./data/rdd2022
+  train_countries: [Japan]
+  val_countries: [Japan]
+  test_countries: [Japan, India, USA]
+  image_size: 640
+  cache: true
+
+training:
+  epochs: 72                   # RT-DETR typically needs fewer epochs with transformer
+  batch_size: 8                # Lower batch due to higher memory
+  num_workers: 8
+  device: cuda
+
+optimizer:
+  name: AdamW
+  lr: 0.0001
+  weight_decay: 0.0001
+  backbone_lr_multiplier: 0.1  # Lower LR for pretrained backbone
+
+scheduler:
+  name: cosine
+  warmup_epochs: 2
+  min_lr: 1.0e-6
+
+loss:
+  matcher: hungarian           # Bipartite matching
+  box: l1
+  giou: true
+  cls: focal
+  cls_weight: 1.0
+  box_weight: 5.0
+  giou_weight: 2.0
+  focal_gamma: 2.0
+  focal_alpha: 0.25
+
+augmentation:
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
+  degrees: 5.0
+  translate: 0.1
+  scale: 0.5
+  fliplr: 0.5
+  mosaic: 0.0                  # RT-DETR doesn't use mosaic by default
+  domain_randomization: false
+
+evaluation:
+  conf_threshold: 0.3
+  iou_threshold: 0.5
+  max_det: 300
+
+logging:
+  project: road_damage_detection
+  name: rtdetrv2_baseline
+  save_dir: ./runs
+  tensorboard: true
+  wandb: false
+
+output:
+  save_dir: ./runs/rtdetrv2_baseline
+  save_period: 10
