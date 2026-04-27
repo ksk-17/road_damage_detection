@@ -21,11 +21,15 @@ CMP 295 SJSU | Road Damage Detection
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import yaml
+
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
@@ -34,7 +38,10 @@ from rich.console import Console
 from rich.table import Table
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from scripts.train import build_model, load_config
+try:
+    from scripts.train import build_model, load_config
+except ModuleNotFoundError:
+    from train import build_model, load_config
 
 console = Console()
 

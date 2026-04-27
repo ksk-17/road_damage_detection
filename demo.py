@@ -140,7 +140,10 @@ def try_load_real_model(model_name: str):
         sys.path.insert(0, str(Path(__file__).parent.parent))
         cfg = MODELS[model_name]
         if cfg["type"] == "yolov11":
-            from models.yolov11_model import YOLOv11RoadDamage
+            try:
+                from models.yolov11_model import YOLOv11RoadDamage
+            except ModuleNotFoundError:
+                from yolov11_model import YOLOv11RoadDamage
             weights = f"./runs/{model_name.replace(' ', '_').lower()}/weights/best.pt"
             if Path(weights).exists():
                 return YOLOv11RoadDamage(variant=cfg["variant"], weights=weights, fpn_scales=cfg["fpn"])

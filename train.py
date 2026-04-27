@@ -25,8 +25,12 @@ from rich.panel import Panel
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from models.yolov11_model import YOLOv11RoadDamage
-from models.rtdetr_model import RTDETRv2RoadDamage
+try:
+    from models.yolov11_model import YOLOv11RoadDamage
+    from models.rtdetr_model import RTDETRv2RoadDamage
+except ModuleNotFoundError:
+    from yolov11_model import YOLOv11RoadDamage
+    from rtdetr_model import RTDETRv2RoadDamage
 
 console = Console()
 
@@ -71,6 +75,32 @@ def check_device(requested: str) -> str:
         console.print("[yellow]⚠ MPS not available, falling back to CPU[/yellow]")
         return "cpu"
     return requested
+
+
+def validate_dataset(config: dict):
+    ds_cfg = config.get("dataset", {})
+    root = Path(ds_cfg.get("root", "")).expanduser().resolve()
+    required_countries = set(ds_cfg.get("train_countries", [])) | set(ds_cfg.get("val_countries", []))
+
+    if not root.exists():
+        raise FileNotFoundError(
+            f"Dataset root not found: {root}\n"
+            "Download and extract RDD2022, then update dataset.root in the config if needed."
+        )
+
+    missing_paths = []
+    for country in sorted(required_countries):
+        img_dir = root / country / "train" / "images"
+        if not img_dir.exists():
+            missing_paths.append(str(img_dir))
+
+    if missing_paths:
+        missing = "\n".join(f"  - {path}" for path in missing_paths)
+        raise FileNotFoundError(
+            "Dataset structure is incomplete. Missing required directories:\n"
+            f"{missing}\n"
+            "Expected layout: <dataset.root>/<Country>/train/images"
+        )
 
 
 def print_improvements_active(config: dict):
@@ -145,6 +175,9 @@ def main():
     # ── Validate device ───────────────────────────────────────────────────────
     device = check_device(config["training"].get("device", "cuda"))
     config["training"]["device"] = device
+
+    # ── Validate dataset ──────────────────────────────────────────────────────
+    validate_dataset(config)
 
     # ── Print summary ─────────────────────────────────────────────────────────
     print_config_summary(config, args.config)
