@@ -98,36 +98,60 @@ os.listdir(DATA_DIR)   # should show: ['train', 'val', 'test']
 
 ---
 
-## 5. Run Training
+## 5. Mount Google Drive for Checkpoints
 
-The configs are already tuned for Colab (50 epochs, batch=32, disk cache, 2 workers, early stopping).
-Pass `--data-dir` so you don't need to edit any YAML files.
+Checkpoints survive session disconnects only if saved to Drive. Mount it first:
 
-```bash
-# YOLOv11 baseline  (~4-5 hrs on T4)
-!python train.py --config yolov11_base-line.yaml --data-dir $DATA_DIR
+```python
+from google.colab import drive
+drive.mount('/content/drive')
 
-# YOLOv11 with all improvements  (~4-5 hrs on T4)
-!python train.py --config yolov11_improved.yaml --data-dir $DATA_DIR
-
-# RT-DETRv2 baseline  (~6-8 hrs on T4, higher memory model)
-!python train.py --config rtdetr_baseline.yaml --data-dir $DATA_DIR
-```
-
-If you hit OOM (out of memory) on T4:
-```bash
-!python train.py --config yolov11_base-line.yaml --data-dir $DATA_DIR --batch 16
-```
-
-Resume a crashed/disconnected run:
-```bash
-!python train.py --config yolov11_base-line.yaml --data-dir $DATA_DIR \
-    --resume runs/detect/runs/yolov11_baseline/weights/last.pt
+CKPT_DIR = "/content/drive/MyDrive/road_damage_ckpts"
 ```
 
 ---
 
-## 6. Run Ablation Study
+## 6. Run Training
+
+Pass `--data-dir` and `--checkpoint-dir` on every run. The script auto-detects an existing
+checkpoint and resumes — no manual intervention needed after a disconnect.
+
+```bash
+# YOLOv11 baseline
+!python train.py --config yolov11_base-line.yaml \
+    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512
+
+# YOLOv11 with all improvements
+!python train.py --config yolov11_improved.yaml \
+    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512
+
+# RT-DETRv2 baseline
+!python train.py --config rtdetr_baseline.yaml \
+    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512
+```
+
+**After a disconnect:** just re-run the exact same command. The script will find
+`$CKPT_DIR/<model_name>/weights/last.pt` and continue from that epoch automatically.
+
+If you hit OOM on T4:
+```bash
+!python train.py --config yolov11_base-line.yaml \
+    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512 --batch 8
+```
+
+To force-resume from a specific checkpoint manually:
+```bash
+!python train.py --config yolov11_base-line.yaml \
+    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR \
+    --resume "$CKPT_DIR/yolov11_baseline/weights/last.pt"
+```
+
+After each run a `training_history.json` is saved inside `$CKPT_DIR/<model_name>/`
+with per-epoch loss and mAP values, accumulated across all sessions.
+
+---
+
+## 7. Run Ablation Study
 
 ```bash
 !python ablation.py --config ablation.yaml --data-dir $DATA_DIR --device cuda
@@ -140,7 +164,7 @@ Run a single experiment:
 
 ---
 
-## 7. Monitor Training with TensorBoard
+## 8. Monitor Training with TensorBoard
 
 ```python
 %load_ext tensorboard
@@ -149,7 +173,7 @@ Run a single experiment:
 
 ---
 
-## 8. Save Results to Google Drive
+## 9. Save Results to Google Drive
 
 Colab sessions reset after ~12 hours. Save checkpoints to Drive so you don't lose them:
 

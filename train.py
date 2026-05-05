@@ -63,6 +63,9 @@ def print_config_summary(config: dict, config_path: str):
     table.add_row("Cls Loss", loss_cfg.get("cls", "bce"))
     table.add_row("Domain Randomization", str(aug_cfg.get("domain_randomization", False)))
     table.add_row("Device", train_cfg.get("device", "cuda"))
+    ckpt_dir = config.get("output", {}).get("checkpoint_dir", "local runs/")
+    table.add_row("Checkpoint Dir", str(ckpt_dir))
+    table.add_row("Resuming", str(train_cfg.get("resume", False)))
 
     console.print(table)
 
@@ -75,6 +78,12 @@ def check_device(requested: str) -> str:
         console.print("[yellow]⚠ MPS not available, falling back to CPU[/yellow]")
         return "cpu"
     return requested
+
+
+def find_checkpoint(checkpoint_dir: str, model_name: str) -> str:
+    """Return path to last.pt if it exists in checkpoint_dir/model_name/weights/, else None."""
+    last_pt = Path(checkpoint_dir) / model_name / "weights" / "last.pt"
+    return str(last_pt) if last_pt.exists() else None
 
 
 def validate_dataset(config: dict):
@@ -149,7 +158,8 @@ def main():
     parser = argparse.ArgumentParser(description="Train Road Damage Detection Model")
     parser.add_argument("--config", required=True, help="Path to YAML config file")
     parser.add_argument("--data-dir", type=str, default=None, help="Override dataset root directory (e.g. /content/RDD_SPLIT)")
-    parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint path")
+    parser.add_argument("--checkpoint-dir", type=str, default=None, help="Directory to save/load checkpoints (e.g. /content/drive/MyDrive/road_damage_ckpts)")
+    parser.add_argument("--resume", type=str, default=None, help="Resume from explicit checkpoint path (auto-detected if --checkpoint-dir is set)")
     parser.add_argument("--device", type=str, default=None, help="Override device (cuda/cpu/mps)")
     parser.add_argument("--epochs", type=int, default=None, help="Override number of epochs")
     parser.add_argument("--batch", type=int, default=None, help="Override batch size")
@@ -177,8 +187,24 @@ def main():
         config["dataset"]["image_size"] = args.imgsz
     if args.workers is not None:
         config["training"]["num_workers"] = args.workers
-    if args.resume:
-        config["model"]["pretrained_weights"] = args.resume
+
+    # ── Checkpoint directory & auto-resume ────────────────────────────────────
+    if args.checkpoint_dir:
+        config["output"]["checkpoint_dir"] = args.checkpoint_dir
+
+    # Explicit --resume overrides auto-detection
+    resume_path = args.resume
+    if not resume_path and args.checkpoint_dir:
+        model_name = config["logging"]["name"]
+        resume_path = find_checkpoint(args.checkpoint_dir, model_name)
+        if resume_path:
+            console.print(f"[green]✓ Checkpoint found — auto-resuming: {resume_path}[/green]")
+        else:
+            console.print(f"[blue]No checkpoint in {args.checkpoint_dir}/{model_name} — starting fresh[/blue]")
+
+    if resume_path:
+        config["model"]["pretrained_weights"] = resume_path
+        config["training"]["resume"] = True
 
     # ── Validate device ───────────────────────────────────────────────────────
     device = check_device(config["training"].get("device", "cuda"))

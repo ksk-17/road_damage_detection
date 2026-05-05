@@ -11,8 +11,11 @@ for Real-Time Detection Transformer. arXiv:2407.17140
 CMP 295 SJSU | Road Damage Detection
 """
 
+import csv
+import json
 import torch
 import torch.nn as nn
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict
 from ultralytics import RTDETR
@@ -58,6 +61,11 @@ class RTDETRv2RoadDamage:
         """Fine-tune RT-DETRv2 on RDD2022."""
         dataset_yaml = self._build_dataset_yaml(config)
 
+        resuming = config["training"].get("resume", False)
+        checkpoint_dir = config.get("output", {}).get("checkpoint_dir")
+        project = checkpoint_dir if checkpoint_dir else config["logging"]["save_dir"]
+        model_name = config["logging"]["name"]
+
         train_args = dict(
             data=dataset_yaml,
             epochs=config["training"]["epochs"],
@@ -73,7 +81,6 @@ class RTDETRv2RoadDamage:
             lr0=config["optimizer"]["lr"],
             weight_decay=config["optimizer"]["weight_decay"],
             warmup_epochs=config["scheduler"]["warmup_epochs"],
-            # RT-DETR specific: lower LR for backbone
             lrf=config["optimizer"].get("backbone_lr_multiplier", 0.1),
             # Augmentation (minimal for RT-DETR — no mosaic)
             hsv_h=config["augmentation"]["hsv_h"],
@@ -85,14 +92,18 @@ class RTDETRv2RoadDamage:
             fliplr=config["augmentation"]["fliplr"],
             mosaic=config["augmentation"].get("mosaic", 0.0),
             # Logging
-            project=config["logging"]["save_dir"],
-            name=config["logging"]["name"],
+            project=project,
+            name=model_name,
             save_period=config["output"]["save_period"],
             exist_ok=True,
             verbose=True,
         )
 
+        if resuming:
+            train_args["resume"] = True
+
         results = self.model.train(**train_args)
+        self._save_training_history(config, project, model_name, resuming)
         return results
 
     def evaluate(self, data_yaml: str, split: str = "val") -> dict:
@@ -129,6 +140,69 @@ class RTDETRv2RoadDamage:
         with open(yaml_path, "w") as f:
             yaml.dump(dataset_cfg, f)
         return str(yaml_path)
+
+    def _save_training_history(self, config: dict, project: str, model_name: str, resumed: bool):
+        """Reads results.csv and appends this run's per-epoch metrics to training_history.json."""
+        run_dir = Path(project) / model_name
+        csv_path = run_dir / "results.csv"
+        history_path = run_dir / "training_history.json"
+
+        if not csv_path.exists():
+            print(f"[RT-DETRv2] results.csv not found at {csv_path}, skipping history save.")
+            return
+
+        per_epoch = []
+        with open(csv_path, newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                stripped = {k.strip(): v.strip() for k, v in row.items()}
+                per_epoch.append({
+                    "epoch":        int(float(stripped.get("epoch", 0))),
+                    "box_loss":     float(stripped.get("train/box_loss", 0)),
+                    "cls_loss":     float(stripped.get("train/cls_loss", 0)),
+                    "dfl_loss":     float(stripped.get("train/dfl_loss", 0)),
+                    "val_box_loss": float(stripped.get("val/box_loss", 0)),
+                    "val_cls_loss": float(stripped.get("val/cls_loss", 0)),
+                    "val_dfl_loss": float(stripped.get("val/dfl_loss", 0)),
+                    "precision":    float(stripped.get("metrics/precision(B)", 0)),
+                    "recall":       float(stripped.get("metrics/recall(B)", 0)),
+                    "mAP50":        float(stripped.get("metrics/mAP50(B)", 0)),
+                    "mAP50_95":     float(stripped.get("metrics/mAP50-95(B)", 0)),
+                })
+
+        if not per_epoch:
+            return
+
+        best_mAP50 = max(e["mAP50"] for e in per_epoch)
+        run_entry = {
+            "run_id":         datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "resumed":        resumed,
+            "model":          self.variant,
+            "start_epoch":    per_epoch[0]["epoch"],
+            "end_epoch":      per_epoch[-1]["epoch"],
+            "epochs_trained": len(per_epoch),
+            "best_mAP50":     best_mAP50,
+            "final_mAP50":    per_epoch[-1]["mAP50"],
+            "config": {
+                "image_size": config["dataset"]["image_size"],
+                "batch_size": config["training"]["batch_size"],
+                "box_loss":   config["loss"]["box"],
+            },
+            "per_epoch": per_epoch,
+        }
+
+        history = {"model_name": model_name, "runs": []}
+        if history_path.exists():
+            with open(history_path) as f:
+                history = json.load(f)
+
+        history["runs"].append(run_entry)
+
+        with open(history_path, "w") as f:
+            json.dump(history, f, indent=2)
+
+        print(f"[RT-DETRv2] Training history saved → {history_path}")
+        print(f"[RT-DETRv2] Epochs this run: {run_entry['start_epoch']}–{run_entry['end_epoch']} | Best mAP50: {best_mAP50:.4f}")
 
     def load_weights(self, path: str):
         self.model = RTDETR(path)
