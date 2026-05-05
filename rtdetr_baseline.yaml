@@ -18,12 +18,13 @@ dataset:
   val_countries: [Japan]
   test_countries: [Japan, India, USA]
   image_size: 640
-  cache: true
+  cache: "disk"
 
 training:
-  epochs: 72                   # RT-DETR typically needs fewer epochs with transformer
-  batch_size: 8                # Lower batch due to higher memory
-  num_workers: 8
+  epochs: 50
+  patience: 20
+  batch_size: 8                # RT-DETR uses more memory than YOLO; keep at 8 on T4
+  num_workers: 2
   device: cuda
 
 optimizer:

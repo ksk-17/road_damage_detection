@@ -100,25 +100,26 @@ os.listdir(DATA_DIR)   # should show: ['train', 'val', 'test']
 
 ## 5. Run Training
 
-Pass `--data-dir` so you don't need to edit any YAML files:
+The configs are already tuned for Colab (50 epochs, batch=32, disk cache, 2 workers, early stopping).
+Pass `--data-dir` so you don't need to edit any YAML files.
 
 ```bash
-# YOLOv11 baseline
+# YOLOv11 baseline  (~4-5 hrs on T4)
 !python train.py --config yolov11_base-line.yaml --data-dir $DATA_DIR
 
-# YOLOv11 with all improvements
+# YOLOv11 with all improvements  (~4-5 hrs on T4)
 !python train.py --config yolov11_improved.yaml --data-dir $DATA_DIR
 
-# RT-DETRv2 baseline
+# RT-DETRv2 baseline  (~6-8 hrs on T4, higher memory model)
 !python train.py --config rtdetr_baseline.yaml --data-dir $DATA_DIR
 ```
 
-Override batch size if you hit OOM on T4 (16GB VRAM):
+If you hit OOM (out of memory) on T4:
 ```bash
-!python train.py --config yolov11_base-line.yaml --data-dir $DATA_DIR --batch 8
+!python train.py --config yolov11_base-line.yaml --data-dir $DATA_DIR --batch 16
 ```
 
-Resume a crashed run:
+Resume a crashed/disconnected run:
 ```bash
 !python train.py --config yolov11_base-line.yaml --data-dir $DATA_DIR \
     --resume runs/detect/runs/yolov11_baseline/weights/last.pt
@@ -169,7 +170,9 @@ Or stream directly during training by setting the output dir in the YAML:
 
 | Situation | Fix |
 |---|---|
-| CUDA out of memory | Add `--batch 8` or `--batch 4` |
-| Session disconnects | Use `--resume` with the last checkpoint |
-| Slow first epoch | Normal — Ultralytics is building the label cache |
-| `nc=4` corrupt label warnings | Delete `$DATA_DIR/train/labels.cache` and `$DATA_DIR/val/labels.cache` and re-run |
+| CUDA out of memory | Add `--batch 16` (YOLO) or `--batch 4` (RT-DETR) |
+| Session disconnects | Use `--resume` with the last checkpoint path |
+| First epoch is slow | Normal — Ultralytics is building the disk cache; all later epochs are much faster |
+| Corrupt label warnings | Delete `$DATA_DIR/train/labels.cache` and `$DATA_DIR/val/labels.cache` |
+| Training stops early | Expected — early stopping (patience=30) kicks in when mAP plateaus |
+| Want faster results | Add `--epochs 30` for a quick benchmark run |

@@ -81,6 +81,9 @@ class YOLOv11RoadDamage:
             imgsz=config["dataset"]["image_size"],
             device=self.device,
             workers=config["training"]["num_workers"],
+            amp=True,
+            cache=config["dataset"].get("cache", False),
+            patience=config["training"].get("patience", 30),
             # Optimizer
             optimizer=config["optimizer"]["name"],
             lr0=config["optimizer"]["lr"],

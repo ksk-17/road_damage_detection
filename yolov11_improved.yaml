@@ -17,12 +17,13 @@ dataset:
   val_countries: [Japan]
   test_countries: [Japan, India, USA]
   image_size: 640
-  cache: true
+  cache: "disk"
 
 training:
-  epochs: 100
-  batch_size: 16
-  num_workers: 8
+  epochs: 50
+  patience: 30
+  batch_size: 32
+  num_workers: 2
   device: cuda
 
 optimizer:

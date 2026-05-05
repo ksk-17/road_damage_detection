@@ -16,12 +16,13 @@ dataset:
   val_countries: [Japan]
   test_countries: [Japan, India, USA]
   image_size: 640
-  cache: true
+  cache: "disk"               # disk cache: preprocessed images on SSD, safe for any RAM size
 
 training:
-  epochs: 100
-  batch_size: 16
-  num_workers: 8
+  epochs: 50                  # pretrained YOLO converges in 30-50 epochs of fine-tuning
+  patience: 30                # early stopping: halt if no mAP improvement for 30 epochs
+  batch_size: 32              # T4/A100 can handle 32; use --batch 16 if OOM
+  num_workers: 2              # 2 is optimal for Colab; increase to 4-8 on local GPU
   device: cuda                # or cpu / mps
 
 optimizer:
