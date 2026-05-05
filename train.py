@@ -153,6 +153,7 @@ def main():
     parser.add_argument("--device", type=str, default=None, help="Override device (cuda/cpu/mps)")
     parser.add_argument("--epochs", type=int, default=None, help="Override number of epochs")
     parser.add_argument("--batch", type=int, default=None, help="Override batch size")
+    parser.add_argument("--imgsz", type=int, default=None, help="Override image size (e.g. 512 for faster Colab runs)")
     parser.add_argument("--workers", type=int, default=None, help="Override dataloader workers (use 2 on Colab)")
     parser.add_argument("--dry-run", action="store_true", help="Validate config without training")
     args = parser.parse_args()
@@ -172,6 +173,8 @@ def main():
         config["training"]["epochs"] = args.epochs
     if args.batch:
         config["training"]["batch_size"] = args.batch
+    if args.imgsz:
+        config["dataset"]["image_size"] = args.imgsz
     if args.workers is not None:
         config["training"]["num_workers"] = args.workers
     if args.resume:

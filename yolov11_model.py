@@ -82,6 +82,7 @@ class YOLOv11RoadDamage:
             device=self.device,
             workers=config["training"]["num_workers"],
             amp=True,
+            rect=True,
             cache=config["dataset"].get("cache", False),
             patience=config["training"].get("patience", 30),
             # Optimizer
