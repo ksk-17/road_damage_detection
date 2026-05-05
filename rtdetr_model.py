@@ -114,16 +114,17 @@ class RTDETRv2RoadDamage:
 
         dataset_cfg = {
             "path": str(Path(root).resolve()),
-            "train": [f"{c}/train/images" for c in train_countries],
-            "val": [f"{c}/train/images" for c in val_countries],
+            "train": "train/images",
+            "val": "val/images",
             "nc": self.num_classes,
-            "names": ["D00", "D10", "D20", "D40"],
+            "names": ["D00", "D10", "D20", "D40", "D44"],
         }
 
-        yaml_path = f"/tmp/rdd2022_{self.variant}.yaml"
+        import tempfile
+        yaml_path = Path(tempfile.gettempdir()) / f"rdd2022_{self.variant}.yaml"
         with open(yaml_path, "w") as f:
             yaml.dump(dataset_cfg, f)
-        return yaml_path
+        return str(yaml_path)
 
     def load_weights(self, path: str):
         self.model = RTDETR(path)

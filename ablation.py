@@ -106,10 +106,10 @@ def run_experiment(
         import tempfile, yaml as _yaml
         ds_yaml = {
             "path": str(Path(config["dataset"]["root"]).resolve()),
-            "train": [f"{config['dataset']['train_countries'][0]}/train/images"],
-            "val":   [f"{country}/train/images"],
-            "nc": 4,
-            "names": ["D00", "D10", "D20", "D40"],
+            "train": "train/images",
+            "val": "val/images",
+            "nc": 5,
+            "names": ["D00", "D10", "D20", "D40", "D44"],
         }
         with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
             _yaml.dump(ds_yaml, f)
@@ -253,6 +253,7 @@ def print_ablation_table(results: List[Dict]):
 def main():
     parser = argparse.ArgumentParser(description="Run Ablation Study for Road Damage Detection")
     parser.add_argument("--config", required=True, help="Path to ablation YAML config")
+    parser.add_argument("--data-dir", type=str, default=None, help="Override dataset root directory (e.g. /content/RDD_SPLIT)")
     parser.add_argument("--results-only", type=str, default=None,
                         help="Skip training, load results from this dir and plot/print")
     parser.add_argument("--plot", action="store_true", help="Generate comparison plots")
@@ -263,6 +264,8 @@ def main():
 
     abl_config = load_config(args.config)
     base_config = load_config(abl_config["base_config"])
+    if args.data_dir:
+        base_config["dataset"]["root"] = args.data_dir
     output_dir = Path(abl_config["evaluation"]["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
     countries = abl_config["evaluation"]["countries"]

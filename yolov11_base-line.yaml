@@ -6,12 +6,12 @@ model:
   variant: yolo11m            # nano/small/medium/large/xlarge
   pretrained: true
   pretrained_weights: yolo11m.pt
-  num_classes: 4
-  class_names: [D00, D10, D20, D40]
+  num_classes: 5
+  class_names: [D00, D10, D20, D40, D44]
   fpn_scales: 3               # Baseline: 3 FPN scales (P3, P4, P5)
 
 dataset:
-  root: ./data/rdd2022
+  root: ./data/RDD_SPLIT
   train_countries: [Japan]    # Primary training set
   val_countries: [Japan]
   test_countries: [Japan, India, USA]

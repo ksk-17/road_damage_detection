@@ -80,17 +80,16 @@ def check_device(requested: str) -> str:
 def validate_dataset(config: dict):
     ds_cfg = config.get("dataset", {})
     root = Path(ds_cfg.get("root", "")).expanduser().resolve()
-    required_countries = set(ds_cfg.get("train_countries", [])) | set(ds_cfg.get("val_countries", []))
 
     if not root.exists():
         raise FileNotFoundError(
             f"Dataset root not found: {root}\n"
-            "Download and extract RDD2022, then update dataset.root in the config if needed."
+            "Update dataset.root in the config to point to data/RDD_SPLIT."
         )
 
     missing_paths = []
-    for country in sorted(required_countries):
-        img_dir = root / country / "train" / "images"
+    for split in ("train", "val"):
+        img_dir = root / split / "images"
         if not img_dir.exists():
             missing_paths.append(str(img_dir))
 
@@ -99,7 +98,7 @@ def validate_dataset(config: dict):
         raise FileNotFoundError(
             "Dataset structure is incomplete. Missing required directories:\n"
             f"{missing}\n"
-            "Expected layout: <dataset.root>/<Country>/train/images"
+            "Expected layout: <dataset.root>/train/images  and  <dataset.root>/val/images"
         )
 
 
@@ -149,6 +148,7 @@ def build_model(config: dict, device: str):
 def main():
     parser = argparse.ArgumentParser(description="Train Road Damage Detection Model")
     parser.add_argument("--config", required=True, help="Path to YAML config file")
+    parser.add_argument("--data-dir", type=str, default=None, help="Override dataset root directory (e.g. /content/RDD_SPLIT)")
     parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint path")
     parser.add_argument("--device", type=str, default=None, help="Override device (cuda/cpu/mps)")
     parser.add_argument("--epochs", type=int, default=None, help="Override number of epochs")
@@ -163,6 +163,8 @@ def main():
     config = load_config(args.config)
 
     # Apply CLI overrides
+    if args.data_dir:
+        config["dataset"]["root"] = args.data_dir
     if args.device:
         config["training"]["device"] = args.device
     if args.epochs:

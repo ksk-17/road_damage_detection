@@ -1,11 +1,10 @@
 """
-data/rdd2022_dataset.py
-RDD2022 Dataset — PASCAL VOC XML loader with augmentation support
+RDD2022 Dataset — YOLO-label loader with augmentation support
+Directory structure: data/RDD_SPLIT/{train,val,test}/{images,labels}/
 CMP 295 SJSU | Road Damage Detection
 """
 
 import os
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
@@ -18,7 +17,7 @@ from albumentations.pytorch import ToTensorV2
 
 
 # ─── Class Definitions ───────────────────────────────────────────────────────
-CLASS_NAMES = ["D00", "D10", "D20", "D40"]
+CLASS_NAMES = ["D00", "D10", "D20", "D40", "D44"]
 CLASS_TO_IDX = {c: i for i, c in enumerate(CLASS_NAMES)}
 IDX_TO_CLASS = {i: c for i, c in enumerate(CLASS_NAMES)}
 
@@ -27,10 +26,16 @@ CLASS_DESCRIPTIONS = {
     "D10": "Transverse Crack",
     "D20": "Alligator Crack",
     "D40": "Pothole",
+    "D44": "White Line Blur",
 }
 
-# Supported countries in RDD2022
-COUNTRIES = ["Japan", "India", "USA", "Czech", "Norway", "China"]
+# Country prefixes as they appear in filenames (e.g. "China_Drone_000001.jpg")
+COUNTRIES = ["Japan", "India", "United", "Czech", "Norway", "China"]
+
+
+def _country_from_filename(name: str) -> str:
+    """Extract country prefix from an image filename."""
+    return name.split("_")[0]
 
 
 # ─── RDD2022 Dataset ─────────────────────────────────────────────────────────
@@ -40,36 +45,38 @@ class RDD2022Dataset(Dataset):
 
     Directory structure expected:
         root/
-          Japan/
-            train/
-              images/   *.jpg
-              annotations/xmls/   *.xml
-            test/
-              images/   *.jpg
-          India/
-            ...
+          train/
+            images/   *.jpg
+            labels/   *.txt  (YOLO format: class cx cy w h, normalised)
+          val/
+            images/   *.jpg
+            labels/   *.txt
+          test/
+            images/   *.jpg
+            labels/   *.txt
 
     Args:
-        root:        Path to RDD2022 root directory
-        countries:   List of countries to include (e.g. ['Japan', 'India'])
-        split:       'train' or 'test'
-        transform:   Albumentations transform pipeline
-        image_size:  Resize target (square)
+        root:         Path to RDD_SPLIT root directory
+        split:        'train', 'val', or 'test'
+        countries:    Optional list of country prefixes to include (e.g. ['Japan']).
+                      None means all countries.
+        transform:    Albumentations transform pipeline
+        image_size:   Resize target (square)
         filter_empty: Skip images with no annotations
     """
 
     def __init__(
         self,
         root: str,
-        countries: List[str],
         split: str = "train",
+        countries: Optional[List[str]] = None,
         transform=None,
         image_size: int = 640,
         filter_empty: bool = False,
     ):
         self.root = Path(root)
-        self.countries = countries
         self.split = split
+        self.countries = set(countries) if countries else None
         self.transform = transform
         self.image_size = image_size
         self.filter_empty = filter_empty
@@ -77,65 +84,72 @@ class RDD2022Dataset(Dataset):
         self.samples: List[Dict] = []
         self._load_samples()
 
+        country_info = list(self.countries) if self.countries else "all"
         print(
             f"[RDD2022] Loaded {len(self.samples)} images "
-            f"from {countries} ({split} split)"
+            f"from {country_info} ({split} split)"
         )
 
     def _load_samples(self):
-        for country in self.countries:
-            img_dir = self.root / country / self.split / "images"
-            ann_dir = self.root / country / self.split / "annotations" / "xmls"
+        img_dir = self.root / self.split / "images"
+        lbl_dir = self.root / self.split / "labels"
 
-            if not img_dir.exists():
-                print(f"  [WARN] {img_dir} not found, skipping.")
+        if not img_dir.exists():
+            print(f"  [WARN] {img_dir} not found, skipping.")
+            return
+
+        for img_path in sorted(img_dir.glob("*.jpg")):
+            country = _country_from_filename(img_path.name)
+            if self.countries and country not in self.countries:
                 continue
 
-            for img_path in sorted(img_dir.glob("*.jpg")):
-                xml_path = ann_dir / (img_path.stem + ".xml")
-                boxes, labels = [], []
+            lbl_path = lbl_dir / (img_path.stem + ".txt")
+            boxes_yolo, labels = [], []
 
-                if xml_path.exists():
-                    boxes, labels = self._parse_voc_xml(xml_path)
+            if lbl_path.exists():
+                boxes_yolo, labels = self._parse_yolo_label(lbl_path)
 
-                if self.filter_empty and len(boxes) == 0:
-                    continue
+            if self.filter_empty and len(boxes_yolo) == 0:
+                continue
 
-                self.samples.append(
-                    {
-                        "image_path": str(img_path),
-                        "xml_path": str(xml_path) if xml_path.exists() else None,
-                        "boxes": boxes,    # List of [xmin, ymin, xmax, ymax]
-                        "labels": labels,  # List of int class indices
-                        "country": country,
-                    }
-                )
+            self.samples.append(
+                {
+                    "image_path": str(img_path),
+                    "lbl_path": str(lbl_path) if lbl_path.exists() else None,
+                    "boxes_yolo": boxes_yolo,   # List of [cx, cy, w, h] normalised
+                    "labels": labels,            # List of int class indices
+                    "country": country,
+                }
+            )
 
-    def _parse_voc_xml(self, xml_path: Path) -> Tuple[List, List]:
-        """Parse PASCAL VOC XML annotation file."""
-        tree = ET.parse(xml_path)
-        root = tree.getroot()
+    def _parse_yolo_label(self, lbl_path: Path) -> Tuple[List, List]:
+        """Parse YOLO-format label file (class cx cy w h, all normalised 0-1)."""
         boxes, labels = [], []
-
-        for obj in root.findall("object"):
-            name = obj.find("name").text.strip()
-            if name not in CLASS_TO_IDX:
-                continue
-
-            bndbox = obj.find("bndbox")
-            xmin = float(bndbox.find("xmin").text)
-            ymin = float(bndbox.find("ymin").text)
-            xmax = float(bndbox.find("xmax").text)
-            ymax = float(bndbox.find("ymax").text)
-
-            # Skip degenerate boxes
-            if xmax <= xmin or ymax <= ymin:
-                continue
-
-            boxes.append([xmin, ymin, xmax, ymax])
-            labels.append(CLASS_TO_IDX[name])
-
+        with open(lbl_path) as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) != 5:
+                    continue
+                cls, cx, cy, w, h = int(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])
+                if cls not in IDX_TO_CLASS:
+                    continue
+                if w <= 0 or h <= 0:
+                    continue
+                boxes.append([cx, cy, w, h])
+                labels.append(cls)
         return boxes, labels
+
+    def _yolo_to_pascal(self, boxes_yolo: List, img_w: int, img_h: int) -> np.ndarray:
+        """Convert YOLO normalised [cx, cy, w, h] → absolute [xmin, ymin, xmax, ymax]."""
+        if not boxes_yolo:
+            return np.zeros((0, 4), dtype=np.float32)
+        arr = np.array(boxes_yolo, dtype=np.float32)
+        cx, cy, w, h = arr[:, 0] * img_w, arr[:, 1] * img_h, arr[:, 2] * img_w, arr[:, 3] * img_h
+        xmin = np.clip(cx - w / 2, 0, img_w)
+        ymin = np.clip(cy - h / 2, 0, img_h)
+        xmax = np.clip(cx + w / 2, 0, img_w)
+        ymax = np.clip(cy + h / 2, 0, img_h)
+        return np.stack([xmin, ymin, xmax, ymax], axis=1)
 
     def __len__(self):
         return len(self.samples)
@@ -143,14 +157,13 @@ class RDD2022Dataset(Dataset):
     def __getitem__(self, idx: int) -> Dict:
         sample = self.samples[idx]
 
-        # Load image
         image = cv2.imread(sample["image_path"])
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        img_h, img_w = image.shape[:2]
 
-        boxes = np.array(sample["boxes"], dtype=np.float32) if sample["boxes"] else np.zeros((0, 4), dtype=np.float32)
+        boxes = self._yolo_to_pascal(sample["boxes_yolo"], img_w, img_h)
         labels = np.array(sample["labels"], dtype=np.int64) if sample["labels"] else np.zeros(0, dtype=np.int64)
 
-        # Apply transforms
         if self.transform and len(boxes) > 0:
             transformed = self.transform(
                 image=image,
@@ -240,19 +253,19 @@ def get_val_transforms(image_size: int = 640) -> A.Compose:
 # ─── DataLoader Factory ───────────────────────────────────────────────────────
 def build_dataloaders(
     root: str,
-    train_countries: List[str],
-    val_countries: List[str],
     image_size: int = 640,
     batch_size: int = 16,
     num_workers: int = 4,
     domain_randomization: bool = False,
+    train_countries: Optional[List[str]] = None,
+    val_countries: Optional[List[str]] = None,
 ) -> Tuple[DataLoader, DataLoader]:
     """Build train and validation DataLoaders."""
 
     train_dataset = RDD2022Dataset(
         root=root,
-        countries=train_countries,
         split="train",
+        countries=train_countries,
         transform=get_train_transforms(image_size, domain_randomization),
         image_size=image_size,
         filter_empty=False,
@@ -260,8 +273,8 @@ def build_dataloaders(
 
     val_dataset = RDD2022Dataset(
         root=root,
+        split="val",
         countries=val_countries,
-        split="train",   # RDD2022 test set has no labels; use train split for val
         transform=get_val_transforms(image_size),
         image_size=image_size,
     )
@@ -285,7 +298,7 @@ def build_dataloaders(
         collate_fn=collate_fn,
     )
 
-    return train_loader, val_dataset
+    return train_loader, val_loader
 
 
 def collate_fn(batch):
@@ -299,14 +312,14 @@ def collate_fn(batch):
 
 
 # ─── Dataset Stats ────────────────────────────────────────────────────────────
-def print_dataset_stats(root: str, countries: List[str] = COUNTRIES):
-    """Print class distribution per country for analysis."""
+def print_dataset_stats(root: str, countries: Optional[List[str]] = None):
+    """Print class distribution per split for analysis."""
     print("\n=== RDD2022 Dataset Statistics ===")
-    for country in countries:
-        ds = RDD2022Dataset(root=root, countries=[country], split="train")
+    for split in ("train", "val", "test"):
+        ds = RDD2022Dataset(root=root, split=split, countries=countries)
         dist = ds.get_class_distribution()
         total = sum(dist.values())
-        print(f"\n{country}: {len(ds)} images, {total} annotations")
+        print(f"\n{split}: {len(ds)} images, {total} annotations")
         for cls, cnt in dist.items():
             pct = 100 * cnt / total if total > 0 else 0
             print(f"  {cls} ({CLASS_DESCRIPTIONS[cls]}): {cnt:,} ({pct:.1f}%)")
@@ -315,7 +328,8 @@ def print_dataset_stats(root: str, countries: List[str] = COUNTRIES):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", default="./data/rdd2022")
+    parser.add_argument("--root", default="./data/RDD_SPLIT")
+    parser.add_argument("--split", default="train", choices=["train", "val", "test"])
     parser.add_argument("--stats", action="store_true")
     args = parser.parse_args()
 
@@ -323,7 +337,7 @@ if __name__ == "__main__":
         print_dataset_stats(args.root)
     else:
         # Quick smoke test
-        ds = RDD2022Dataset(root=args.root, countries=["Japan"], split="train",
+        ds = RDD2022Dataset(root=args.root, split=args.split,
                             transform=get_train_transforms())
         print(f"Dataset size: {len(ds)}")
         if len(ds) > 0:

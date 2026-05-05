@@ -5,3 +5,7 @@ data/
 runs/
 
 *.pt
+
+*.claude/
+*.vscode/
+*.deepeval/

@@ -15,7 +15,7 @@ from ultralytics.nn.tasks import DetectionModel
 
 
 # ─── Class Metadata ───────────────────────────────────────────────────────────
-CLASS_NAMES = ["D00", "D10", "D20", "D40"]
+CLASS_NAMES = ["D00", "D10", "D20", "D40", "D44"]
 CLASS_DESCRIPTIONS = {
     "D00": "Longitudinal Crack",
     "D10": "Transverse Crack",
@@ -151,23 +151,22 @@ class YOLOv11RoadDamage:
     def _build_dataset_yaml(self, config: dict) -> str:
         """Generate YOLO-format dataset YAML for Ultralytics trainer."""
         import yaml
+        import tempfile
         root = config["dataset"]["root"]
-        train_countries = config["dataset"]["train_countries"]
-        val_countries = config["dataset"]["val_countries"]
 
         dataset_cfg = {
             "path": str(Path(root).resolve()),
-            "train": [f"{c}/train/images" for c in train_countries],
-            "val": [f"{c}/train/images" for c in val_countries],  # test split has no labels
+            "train": "train/images",
+            "val": "val/images",
             "nc": self.num_classes,
             "names": CLASS_NAMES,
         }
 
-        yaml_path = f"/tmp/rdd2022_{self.variant}.yaml"
+        yaml_path = Path(tempfile.gettempdir()) / f"rdd2022_{self.variant}.yaml"
         with open(yaml_path, "w") as f:
             yaml.dump(dataset_cfg, f)
 
-        return yaml_path
+        return str(yaml_path)
 
     def load_weights(self, path: str):
         """Load fine-tuned weights."""
