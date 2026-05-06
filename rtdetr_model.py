@@ -82,7 +82,7 @@ class RTDETRv2RoadDamage:
             weight_decay=config["optimizer"]["weight_decay"],
             warmup_epochs=config["scheduler"]["warmup_epochs"],
             lrf=config["optimizer"].get("backbone_lr_multiplier", 0.1),
-            # Augmentation (minimal for RT-DETR — no mosaic)
+            # Augmentation
             hsv_h=config["augmentation"]["hsv_h"],
             hsv_s=config["augmentation"]["hsv_s"],
             hsv_v=config["augmentation"]["hsv_v"],
@@ -90,7 +90,10 @@ class RTDETRv2RoadDamage:
             translate=config["augmentation"]["translate"],
             scale=config["augmentation"]["scale"],
             fliplr=config["augmentation"]["fliplr"],
+            flipud=config["augmentation"].get("flipud", 0.0),
             mosaic=config["augmentation"].get("mosaic", 0.0),
+            copy_paste=config["augmentation"].get("copy_paste", 0.0),
+            mixup=config["augmentation"].get("mixup", 0.0),
             # Logging
             project=project,
             name=model_name,

@@ -1,0 +1,99 @@
+# configs/rtdetr_improved.yaml
+# RT-DETRv2 with All Improvements — RDD2022
+# Improvements over baseline:
+#   (1) Domain randomization augmentation — cross-country visual shift simulation
+#   (2) Copy-paste + mosaic augmentation — tackles class imbalance, rare damage instances
+#   (3) More aggressive geometric augmentation — scale, rotation, translate
+#   (4) Extended training — baseline cut off at 24 epochs, far from convergence
+#   (5) Higher patience — transformer models converge slower than YOLO
+
+model:
+  name: rtdetrv2
+  variant: rtdetr-l            # rtdetr-s / rtdetr-m / rtdetr-l / rtdetr-x
+  pretrained: true
+  pretrained_weights: rtdetr-l.pt
+  num_classes: 5
+  class_names: [D00, D10, D20, D40, D44]
+  num_queries: 300
+  num_decoder_layers: 6
+  hidden_dim: 256
+
+dataset:
+  root: ./data/RDD_SPLIT
+  train_countries: [Japan]
+  val_countries: [Japan]
+  test_countries: [Japan, India, USA]
+  image_size: 640
+  cache: "disk"
+
+training:
+  epochs: 100                  # Baseline only ran 24 — still climbing steeply
+  patience: 40                 # Transformers converge slower; give more room
+  batch_size: 8                # RT-DETR memory footprint; keep at 8 on T4
+  num_workers: 2
+  device: cuda
+
+optimizer:
+  name: AdamW
+  lr: 0.0001
+  weight_decay: 0.0001
+  backbone_lr_multiplier: 0.1
+
+scheduler:
+  name: cosine
+  warmup_epochs: 4             # Slightly longer warmup for more augmentation variance
+  min_lr: 1.0e-6
+
+loss:
+  matcher: hungarian
+  box: l1
+  giou: true
+  cls: focal
+  cls_weight: 1.0
+  box_weight: 5.0
+  giou_weight: 2.0
+  focal_gamma: 2.0
+  focal_alpha: 0.25
+
+augmentation:
+  # Geometric — more aggressive than baseline
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
+  degrees: 10.0                # Baseline: 5.0 — roads are photographed at varied angles
+  translate: 0.15              # Baseline: 0.1
+  scale: 0.6                   # Baseline: 0.5
+  fliplr: 0.5
+  flipud: 0.05                 # Small — drone imagery is sometimes inverted
+
+  # Multi-instance augmentation — helps with sparse damage and class imbalance
+  mosaic: 0.5                  # Baseline: 0.0 — RT-DETR handles mosaic fine; combines 4 scenes
+  copy_paste: 0.3              # Paste rare damage crops (D40, D44) into clean road images
+  mixup: 0.1                   # Light blending between two training images
+
+  # IMPROVEMENT: Domain randomization — simulates Japan→India/USA/Czech visual shift
+  domain_randomization: true
+  domain_randomization_params:
+    brightness_range: [0.6, 1.4]  # Sun angle, exposure differences by country
+    contrast_range: [0.7, 1.3]
+    saturation_range: [0.5, 1.5]
+    hue_shift: 0.05
+    blur_prob: 0.15               # Drone camera focus blur
+    noise_prob: 0.1               # Sensor noise in low-light
+    jpeg_quality_range: [65, 100] # Dashcam/compressed footage simulation
+
+evaluation:
+  conf_threshold: 0.25
+  iou_threshold: 0.5
+  max_det: 300
+
+logging:
+  project: road_damage_detection
+  name: rtdetrv2_improved
+  save_dir: ./runs
+  tensorboard: true
+  wandb: false
+
+output:
+  save_dir: ./runs/rtdetrv2_improved
+  save_period: 10

@@ -2,50 +2,67 @@
 
 ## 1. Enable GPU Runtime
 
-Before running anything:
 **Runtime → Change runtime type → Hardware accelerator → T4 GPU → Save**
 
-Verify GPU is active:
+Verify before doing anything else:
 ```python
 import torch
-print(torch.cuda.is_available())        # True
-print(torch.cuda.get_device_name(0))    # Tesla T4
+print(torch.cuda.is_available())
+print(torch.cuda.get_device_name(0))
 ```
 
 ---
 
-## 2. Upload Project Files
+## 2. Mount Google Drive
 
-Upload the project files to your Colab session or mount Google Drive:
+Checkpoints are written directly to Drive during training, so they survive session
+disconnects. Mount it first — every session, before running any training command.
 
 ```python
 from google.colab import drive
 drive.mount('/content/drive')
+
+CKPT_DIR = "/content/drive/MyDrive/road_damage_ckpts"
 ```
 
-Then either clone from GitHub or copy files from Drive. The files you need:
+---
+
+## 3. Upload Project Files
+
+Upload or clone your project files. Files required:
+
 ```
 train.py
 yolov11_model.py
 rtdetr_model.py
 losses.py
+rdd2022_dataset.py
+ablation.py
 yolov11_base-line.yaml
 yolov11_improved.yaml
 rtdetr_baseline.yaml
+rtdetr_improved.yaml
 ablation.yaml
-ablation.py
 ```
 
 ---
 
-## 3. Get the Dataset — Download from Kaggle (Recommended)
+## 4. Install Dependencies
 
-Downloading directly inside Colab is much faster than uploading (~3GB). No manual upload needed.
+```python
+!pip install ultralytics albumentations rich PyYAML opencv-python-headless kagglehub
+```
 
-### Step 1 — Add your Kaggle API key
+---
 
-Go to [kaggle.com](https://www.kaggle.com) → Account → API → Create New Token.
-This downloads `kaggle.json`. Upload it to Colab:
+## 5. Get the Dataset
+
+Downloading directly inside Colab (~3 GB) is much faster than uploading manually.
+
+### Step 1 — Kaggle API key
+
+Go to [kaggle.com](https://www.kaggle.com) → Account → API → **Create New Token**.
+Upload the downloaded `kaggle.json`:
 
 ```python
 from google.colab import files
@@ -59,7 +76,7 @@ shutil.copy('kaggle.json', '/root/.kaggle/kaggle.json')
 os.chmod('/root/.kaggle/kaggle.json', 0o600)
 ```
 
-### Step 2 — Download the dataset
+### Step 2 — Download
 
 ```python
 import kagglehub
@@ -71,95 +88,79 @@ print("Downloaded to:", path)
 
 ```python
 import os
-for root, dirs, files in os.walk(path):
+for root, dirs, _ in os.walk(path):
     if 'train' in dirs and 'val' in dirs:
-        data_dir = root
-        print("Data dir:", data_dir)
+        DATA_DIR = root
         break
-```
-
-Set it as a variable (example — your path will differ):
-```python
-DATA_DIR = data_dir   # e.g. /root/.cache/kagglehub/datasets/aliabdelmenam/rdd-2022/versions/1/RDD_SPLIT
-```
-
-Verify the structure:
-```python
+print("DATA_DIR =", DATA_DIR)
 os.listdir(DATA_DIR)   # should show: ['train', 'val', 'test']
-```
-
----
-
-## 4. Install Dependencies
-
-```python
-!pip install ultralytics albumentations rich PyYAML opencv-python-headless
-```
-
----
-
-## 5. Mount Google Drive for Checkpoints
-
-Checkpoints survive session disconnects only if saved to Drive. Mount it first:
-
-```python
-from google.colab import drive
-drive.mount('/content/drive')
-
-CKPT_DIR = "/content/drive/MyDrive/road_damage_ckpts"
 ```
 
 ---
 
 ## 6. Run Training
 
-Pass `--data-dir` and `--checkpoint-dir` on every run. The script auto-detects an existing
-checkpoint and resumes — no manual intervention needed after a disconnect.
+Pass `--data-dir` and `--checkpoint-dir` on every run.
+The script auto-detects `last.pt` in `CKPT_DIR` and resumes automatically after a disconnect.
+A `training_history.json` with per-epoch loss and mAP is saved alongside each checkpoint.
+
+### Model overview
+
+| Model | Config | imgsz | Batch | Epochs | Notes |
+|---|---|---|---|---|---|
+| YOLOv11 Baseline | `yolov11_base-line.yaml` | 512 | 16 | 50 | Reference |
+| YOLOv11 Improved | `yolov11_improved.yaml` | 512 | 16 | 50 | +FPN4, +WIoU, +domain aug |
+| RT-DETR Baseline | `rtdetr_baseline.yaml` | 640 | 8 | 100 | ~2.5× better mAP than YOLO |
+| RT-DETR Improved | `rtdetr_improved.yaml` | 640 | 8 | 100 | +domain aug, +mosaic, +copy-paste |
+
+> **Recommended order:** run RT-DETR models first — they outperform YOLO significantly
+> and RT-DETR Improved is the strongest model in this project.
+
+### Commands
 
 ```bash
-# YOLOv11 baseline
+# YOLOv11 Baseline
 !python train.py --config yolov11_base-line.yaml \
-    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512
+    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512 --batch 16
 
-# YOLOv11 with all improvements
+# YOLOv11 Improved
 !python train.py --config yolov11_improved.yaml \
-    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512
+    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512 --batch 16
 
-# RT-DETRv2 baseline
+# RT-DETR Baseline
 !python train.py --config rtdetr_baseline.yaml \
-    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512
+    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR
+
+# RT-DETR Improved  ← strongest model
+!python train.py --config rtdetr_improved.yaml \
+    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR
 ```
 
-**After a disconnect:** just re-run the exact same command. The script will find
-`$CKPT_DIR/<model_name>/weights/last.pt` and continue from that epoch automatically.
+**After a disconnect:** re-run the exact same command. The script prints
+`✓ Checkpoint found — auto-resuming` and continues from the last saved epoch.
 
-If you hit OOM on T4:
+To force-resume from a specific checkpoint:
 ```bash
-!python train.py --config yolov11_base-line.yaml \
-    --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512 --batch 8
-```
-
-To force-resume from a specific checkpoint manually:
-```bash
-!python train.py --config yolov11_base-line.yaml \
+!python train.py --config rtdetr_improved.yaml \
     --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR \
-    --resume "$CKPT_DIR/yolov11_baseline/weights/last.pt"
+    --resume "$CKPT_DIR/rtdetrv2_improved/weights/last.pt"
 ```
-
-After each run a `training_history.json` is saved inside `$CKPT_DIR/<model_name>/`
-with per-epoch loss and mAP values, accumulated across all sessions.
 
 ---
 
 ## 7. Run Ablation Study
 
+Runs all 6 ablation experiments sequentially and saves a comparison table + plots.
+
 ```bash
-!python ablation.py --config ablation.yaml --data-dir $DATA_DIR --device cuda
+!python ablation.py --config ablation.yaml --data-dir $DATA_DIR \
+    --checkpoint-dir $CKPT_DIR --device cuda
 ```
 
-Run a single experiment:
+Run a single experiment (useful for testing):
 ```bash
-!python ablation.py --config ablation.yaml --data-dir $DATA_DIR --experiment fpn4_only
+!python ablation.py --config ablation.yaml --data-dir $DATA_DIR \
+    --experiment fpn4_only
 ```
 
 ---
@@ -168,35 +169,20 @@ Run a single experiment:
 
 ```python
 %load_ext tensorboard
-%tensorboard --logdir runs/
+%tensorboard --logdir $CKPT_DIR
 ```
 
 ---
 
-## 9. Save Results to Google Drive
-
-Colab sessions reset after ~12 hours. Save checkpoints to Drive so you don't lose them:
-
-```python
-import shutil
-shutil.copytree('runs/', '/content/drive/MyDrive/road_damage_runs/', dirs_exist_ok=True)
-```
-
-Or stream directly during training by setting the output dir in the YAML:
-```bash
-!python train.py --config yolov11_base-line.yaml --data-dir $DATA_DIR
-# Then manually copy runs/ to Drive when done
-```
-
----
-
-## Tips
+## Troubleshooting
 
 | Situation | Fix |
 |---|---|
-| CUDA out of memory | Add `--batch 16` (YOLO) or `--batch 4` (RT-DETR) |
-| Session disconnects | Use `--resume` with the last checkpoint path |
-| First epoch is slow | Normal — Ultralytics is building the disk cache; all later epochs are much faster |
-| Corrupt label warnings | Delete `$DATA_DIR/train/labels.cache` and `$DATA_DIR/val/labels.cache` |
-| Training stops early | Expected — early stopping (patience=30) kicks in when mAP plateaus |
-| Want faster results | Add `--epochs 30` for a quick benchmark run |
+| CUDA out of memory (YOLO) | Add `--batch 8` |
+| CUDA out of memory (RT-DETR) | Add `--batch 4` |
+| Session disconnects | Re-run the same command — auto-resumes from Drive checkpoint |
+| First epoch very slow | Normal — Ultralytics builds the disk cache; all later epochs are faster |
+| Corrupt label warnings (`class 4`) | Delete `$DATA_DIR/train/labels.cache` and `$DATA_DIR/val/labels.cache` then re-run |
+| Training stops before `epochs` | Expected — early stopping (YOLO: patience 30, RT-DETR: patience 40) |
+| Quick smoke test | Add `--epochs 5` to verify the full pipeline runs |
+| Check what epoch you're on | Open `$CKPT_DIR/<model_name>/training_history.json` |
