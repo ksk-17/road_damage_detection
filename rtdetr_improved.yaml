@@ -27,9 +27,9 @@ dataset:
   cache: "disk"
 
 training:
-  epochs: 100                  # Baseline only ran 24 — still climbing steeply
+  epochs: 50                  # Baseline only ran 24 — still climbing steeply
   patience: 40                 # Transformers converge slower; give more room
-  batch_size: 8                # RT-DETR memory footprint; keep at 8 on T4
+  batch_size: 32                # RT-DETR memory footprint; keep at 8 on T4
   num_workers: 2
   device: cuda
 

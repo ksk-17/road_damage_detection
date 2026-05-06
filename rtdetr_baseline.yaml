@@ -23,7 +23,7 @@ dataset:
 training:
   epochs: 50
   patience: 20
-  batch_size: 8                # RT-DETR uses more memory than YOLO; keep at 8 on T4
+  batch_size: 32                # RT-DETR uses more memory than YOLO; keep at 8 on T4
   num_workers: 2
   device: cuda
 
