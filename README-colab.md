@@ -150,17 +150,65 @@ To force-resume from a specific checkpoint:
 
 ## 7. Run Ablation Study
 
-Runs all 6 ablation experiments sequentially and saves a comparison table + plots.
+Run this **after all four models are trained**. It loads each model from its saved
+checkpoint, evaluates on the val set, reads the training history, and writes five
+plots + a CSV to `runs/ablation/`.
+
+### Full run (eval + all plots + detection grid)
 
 ```bash
-!python ablation.py --config ablation.yaml --data-dir $DATA_DIR \
-    --checkpoint-dir $CKPT_DIR --device cuda
+!python ablation.py --config ablation.yaml \
+    --checkpoint-dir $CKPT_DIR \
+    --data-dir $DATA_DIR \
+    --device cuda
 ```
 
-Run a single experiment (useful for testing):
+### Outputs
+
+| File | What it shows |
+|---|---|
+| `metrics_comparison.png` | Bar chart: mAP@50, mAP@50-95, Precision, Recall per model |
+| `loss_curves.png` | Train + val box / cls / DFL loss over epochs for each model |
+| `metric_curves.png` | mAP@50, Precision, Recall curves over epochs |
+| `per_class_mAP.png` | Heatmap of per-class mAP@50 (D00–D44) across all models |
+| `detection_grid.png` | Sample val images with each model's detections side-by-side |
+| `ablation_results.csv` | Final metrics table (mAP, Precision, Recall, F1, Δ vs baseline) |
+
+### Display plots inline
+
+```python
+from IPython.display import Image, display
+import os
+
+OUTPUT = "/content/road_damage_detection/runs/ablation"
+
+for fname in ["metrics_comparison.png", "loss_curves.png",
+              "metric_curves.png", "per_class_mAP.png", "detection_grid.png"]:
+    path = os.path.join(OUTPUT, fname)
+    if os.path.exists(path):
+        print(f"\n── {fname} ──")
+        display(Image(path))
+```
+
+### Useful flags
+
 ```bash
-!python ablation.py --config ablation.yaml --data-dir $DATA_DIR \
-    --experiment fpn4_only
+# Plot training curves only — no GPU, no evaluation needed
+!python ablation.py --config ablation.yaml --checkpoint-dir $CKPT_DIR --curves-only
+
+# Skip detection grid (faster when GPU memory is tight)
+!python ablation.py --config ablation.yaml \
+    --checkpoint-dir $CKPT_DIR --data-dir $DATA_DIR --no-detection
+
+# Evaluate a single model only
+!python ablation.py --config ablation.yaml \
+    --checkpoint-dir $CKPT_DIR --data-dir $DATA_DIR \
+    --model yolov11_baseline
+
+# Control how many sample images appear in the detection grid (default 6)
+!python ablation.py --config ablation.yaml \
+    --checkpoint-dir $CKPT_DIR --data-dir $DATA_DIR \
+    --num-samples 8
 ```
 
 ---
