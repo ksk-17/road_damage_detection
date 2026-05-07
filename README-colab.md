@@ -38,7 +38,7 @@ rtdetr_model.py
 losses.py
 rdd2022_dataset.py
 ablation.py
-yolov11_base-line.yaml
+yolov11_baseline.yaml
 yolov11_improved.yaml
 rtdetr_baseline.yaml
 rtdetr_improved.yaml
@@ -108,7 +108,7 @@ A `training_history.json` with per-epoch loss and mAP is saved alongside each ch
 
 | Model | Config | imgsz | Batch | Epochs | Notes |
 |---|---|---|---|---|---|
-| YOLOv11 Baseline | `yolov11_base-line.yaml` | 512 | 16 | 50 | Reference |
+| YOLOv11 Baseline | `yolov11_baseline.yaml` | 512 | 16 | 50 | Reference |
 | YOLOv11 Improved | `yolov11_improved.yaml` | 512 | 16 | 50 | +FPN4, +WIoU, +domain aug |
 | RT-DETR Baseline | `rtdetr_baseline.yaml` | 640 | 8 | 100 | ~2.5× better mAP than YOLO |
 | RT-DETR Improved | `rtdetr_improved.yaml` | 640 | 8 | 100 | +domain aug, +mosaic, +copy-paste |
@@ -120,7 +120,7 @@ A `training_history.json` with per-epoch loss and mAP is saved alongside each ch
 
 ```bash
 # YOLOv11 Baseline
-!python train.py --config yolov11_base-line.yaml \
+!python train.py --config yolov11_baseline.yaml \
     --data-dir $DATA_DIR --checkpoint-dir $CKPT_DIR --imgsz 512 --batch 16
 
 # YOLOv11 Improved
