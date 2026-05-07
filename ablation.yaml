@@ -2,7 +2,7 @@
 # Ablation Study Configuration
 # Tests each improvement independently and combined
 
-base_config: configs/yolov11_baseline.yaml
+base_config: yolov11_baseline.yaml
 
 experiments:
   - name: baseline
