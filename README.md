@@ -55,11 +55,13 @@ This project builds an **end-to-end object detection pipeline** for automatic ro
 **YOLOv11** (Ultralytics, 2024) — Primary baseline
 - Latest YOLO release with improved backbone and enhanced feature extraction
 - Strong mAP/speed tradeoff; ideal for real-time drone deployment
+- Variant: `yolo11m` — 20M parameters, 67.7 GFLOPs
 
 **RT-DETRv2** (Baidu, 2024) — Architectural comparison
 - Real-Time Detection Transformer with deformable multi-scale attention
 - Hungarian bipartite matching (no NMS required)
 - Genuinely distinct paradigm from CNN-based YOLO, enabling a fair architectural comparison
+- Variant: `rtdetr-l` — 32M parameters, 103.5 GFLOPs
 
 ### Three Improvements
 
@@ -85,35 +87,20 @@ road_damage_detection/
 ├── README.md
 ├── requirements.txt
 │
-├── configs/
-│   ├── yolov11_baseline.yaml       # YOLOv11 baseline (CIoU, 3-scale FPN)
-│   ├── yolov11_improved.yaml       # YOLOv11 + all 3 improvements
-│   ├── rtdetr_baseline.yaml        # RT-DETRv2 baseline
-│   └── ablation.yaml               # 6-experiment ablation study config
+├── yolov11_baseline.yaml           # YOLOv11 baseline (CIoU, 3-scale FPN)
+├── yolov11_improved.yaml           # YOLOv11 + FPN4 + Focal+WIoU + domain adapt
+├── rtdetr_baseline.yaml            # RT-DETRv2 baseline (Hungarian matching)
+├── rtdetr_improved.yaml            # RT-DETRv2 + domain adapt + mosaic + copy-paste
+├── ablation.yaml                   # Model registry for ablation study (no training)
 │
-├── data/
-│   └── rdd2022_dataset.py          # Dataset loader, VOC XML parser, augmentation pipelines
+├── yolov11_model.py                # YOLOv11 wrapper + FourScaleFPNHead implementation
+├── rtdetr_model.py                 # RT-DETRv2 wrapper + HungarianMatcher
+├── losses.py                       # FocalLoss, WIoULoss, CIoULoss, RoadDamageDetectionLoss
 │
-├── models/
-│   ├── yolov11_model.py            # YOLOv11 wrapper + FourScaleFPNHead implementation
-│   └── rtdetr_model.py             # RT-DETRv2 wrapper + HungarianMatcher
+├── train.py                        # Main training entry point (supports all models/configs)
+├── ablation.py                     # Checkpoint-based evaluator + comparison charts/tables
 │
-├── training/
-│   └── losses.py                   # FocalLoss, WIoULoss, CIoULoss, RoadDamageDetectionLoss
-│
-├── evaluation/
-│   └── metrics.py                  # mAP@50, mAP@50-95, per-class AP, visualization
-│
-├── utils/
-│   └── visualization.py            # Bounding box drawing, training curve plots
-│
-├── scripts/
-│   ├── prepare_dataset.py          # Download guide, VOC→YOLO conversion, dataset.yaml gen
-│   ├── train.py                    # Main training entry point (supports all models/configs)
-│   └── ablation.py                 # 6-experiment ablation runner + comparison charts/tables
-│
-└── app/
-    └── demo.py                     # Streamlit web demo: upload → detect → visualize
+└── road_detection.ipynb            # End-to-end Colab notebook with all results and plots
 ```
 
 ---
@@ -147,20 +134,30 @@ Dataset: https://doi.org/10.21227/ke5f-n977
 
 ```bash
 # YOLOv11 baseline
-python scripts/train.py --config configs/yolov11_baseline.yaml
-
-# RT-DETRv2 baseline
-python scripts/train.py --config configs/rtdetr_baseline.yaml
+python train.py --config yolov11_baseline.yaml --data-dir ./data/RDD_SPLIT --imgsz 512
 
 # YOLOv11 with all 3 improvements
-python scripts/train.py --config configs/yolov11_improved.yaml
+python train.py --config yolov11_improved.yaml --data-dir ./data/RDD_SPLIT --imgsz 512
+
+# RT-DETRv2 baseline
+python train.py --config rtdetr_baseline.yaml --data-dir ./data/RDD_SPLIT
+
+# RT-DETRv2 with improvements  ← best model
+python train.py --config rtdetr_improved.yaml --data-dir ./data/RDD_SPLIT
 ```
 
 ### 4. Run Ablation Study
 
+Requires all four models to be trained first. Loads from checkpoints — no retraining.
+
 ```bash
-python scripts/ablation.py --config configs/ablation.yaml --plot
+python ablation.py --config ablation.yaml \
+    --checkpoint-dir ./runs \
+    --data-dir ./data/RDD_SPLIT
 ```
+
+Outputs written to `runs/ablation/`: bar charts, loss curves, metric curves,
+per-class mAP heatmap, detection grid, and `ablation_results.csv`.
 
 ### 5. Launch Web Demo
 
@@ -170,49 +167,71 @@ streamlit run app/demo.py
 
 ---
 
-## 🔬 Ablation Design
+## ⚙️ Training Parameters
 
-| Experiment | FPN Scales | Box Loss | Domain Adapt |
-|------------|-----------|----------|--------------|
-| Baseline | 3 | CIoU | ❌ |
-| + 4th FPN Scale | **4** | CIoU | ❌ |
-| + Focal+WIoU | 3 | **Focal+WIoU** | ❌ |
-| + Domain Adapt | 3 | CIoU | **✅** |
-| + FPN4 + Focal+WIoU | **4** | **Focal+WIoU** | ❌ |
-| **All Improvements** | **4** | **Focal+WIoU** | **✅** |
+| | YOLOv11 Baseline | YOLOv11 Improved | RT-DETRv2 Baseline | RT-DETRv2 Improved |
+|---|---|---|---|---|
+| Variant | yolo11m | yolo11m | rtdetr-l | rtdetr-l |
+| Parameters | 20M | 20M | 32M | 32M |
+| GFLOPs | 67.7 | 67.7 | 103.5 | 103.5 |
+| Image size | 512 | 512 | 640 | 640 |
+| Epochs | 50 | 50 | 50 | 50 (stopped at 56) |
+| Batch size | 32 | 32 | 32 | 32 |
+| Optimizer | AdamW | AdamW | AdamW | AdamW |
+| LR | 1e-3 | 1e-3 | 1e-4 | 1e-4 |
+| Box loss | CIoU | Focal+WIoU | L1+GIoU | L1+GIoU |
+| Cls loss | BCE | Focal | Focal | Focal |
+| FPN scales | 3 | **4** | — | — |
+| Mosaic | 1.0 | 1.0 | 0.0 | **0.5** |
+| Copy-paste | 0.1 | 0.15 | 0.0 | **0.3** |
+| Domain randomization | ❌ | **✅** | ❌ | **✅** |
+| Patience | 30 | 30 | 20 | **40** |
 
 ---
 
-## ✅ Progress & Next Steps
+## 📊 Results
 
-### Completed ✔️
-- [x] Project proposal finalized
-- [x] Repository initialized with full modular project structure
-- [x] `data/rdd2022_dataset.py` — RDD2022 loader, PASCAL VOC XML parser, domain randomization augmentation
-- [x] `models/yolov11_model.py` — YOLOv11 fine-tuning wrapper with `FourScaleFPNHead` (Improvement 1)
-- [x] `models/rtdetr_model.py` — RT-DETRv2 wrapper with `HungarianMatcher` implementation
-- [x] `training/losses.py` — `WIoULoss`, `FocalLoss`, `CIoULoss`, and `RoadDamageDetectionLoss` from scratch (Improvement 2)
-- [x] `scripts/train.py` — Unified training entry point for both architectures
-- [x] `scripts/ablation.py` — Full 6-experiment ablation runner with charts and CSV output
-- [x] `scripts/prepare_dataset.py` — Dataset verification, format conversion, YAML generation
-- [x] `evaluation/metrics.py` — mAP@50/50-95, per-class AP, precision-recall, comparison plots
-- [x] `app/demo.py` — Streamlit demo with live detection, model comparison, and ablation tabs
-- [x] All 4 YAML configs (YOLOv11 baseline/improved, RT-DETRv2, ablation)
-- [x] `requirements.txt` with all dependencies
+All models trained on **Japan** split (RDD2022), evaluated on the full val set.
 
-### In Progress 🔄
-- [ ] Downloading and verifying RDD2022 dataset locally
-- [ ] Running initial YOLOv11 baseline training on Japan subset
-- [ ] End-to-end pipeline validation (data → train → eval)
+### Overall Metrics
 
-### Next Steps 📋
-- [ ] Complete YOLOv11 baseline training — log mAP@50 result
-- [ ] Complete RT-DETRv2 baseline training
-- [ ] Run all 6 ablation experiments and generate comparison table
-- [ ] Evaluate domain generalization on India and USA splits
-- [ ] Integrate real model weights into Streamlit demo
-- [ ] Record final demo walkthrough video
-- [ ] Write final project report with full results
+| Model | mAP@50 | mAP@50-95 | Precision | Recall | F1 | ΔmAP@50 |
+|---|---|---|---|---|---|---|
+| YOLOv11 Baseline | 0.354 | 0.161 | 0.490 | 0.356 | 0.412 | — |
+| YOLOv11 Improved | 0.366 | 0.175 | 0.490 | 0.373 | 0.423 | +0.012 |
+| RT-DETRv2 Baseline | 0.523 | 0.238 | 0.598 | 0.507 | 0.549 | +0.169 |
+| **RT-DETRv2 Improved** | **0.552** | **0.242** | **0.612** | **0.531** | **0.569** | **+0.198** |
+
+RT-DETRv2 Improved achieves **+19.8 mAP@50 points** over the YOLOv11 baseline — a 56% relative improvement.
+
+### Per-Class mAP@50
+
+| Class | YOLOv11 Base | YOLOv11 Impr | RT-DETRv2 Base | RT-DETRv2 Impr |
+|---|---|---|---|---|
+| D00 — Longitudinal Crack | 0.364 | 0.375 | 0.485 | 0.499 |
+| D10 — Transverse Crack | 0.350 | 0.367 | 0.435 | 0.457 |
+| D20 — Alligator Crack | 0.448 | 0.447 | 0.587 | **0.609** |
+| D40 — Pothole | 0.417 | 0.441 | 0.693 | **0.720** |
+| D44 — Other Damage | 0.190 | 0.199 | 0.416 | **0.473** |
+
+RT-DETRv2's Hungarian matching loss is particularly effective for pothole (D40) detection, achieving **0.720 mAP@50** vs. 0.417 for the YOLO baseline — a near 2× gain on the most safety-critical damage class.
+
+---
+
+## ✅ Completed
+
+- [x] `yolov11_model.py` — YOLOv11 fine-tuning wrapper with `FourScaleFPNHead` (Improvement 1)
+- [x] `rtdetr_model.py` — RT-DETRv2 wrapper with `HungarianMatcher` implementation
+- [x] `losses.py` — `WIoULoss`, `FocalLoss`, `CIoULoss`, and `RoadDamageDetectionLoss` (Improvement 2)
+- [x] `train.py` — Unified training entry point for both architectures with auto-resume
+- [x] `ablation.py` — Checkpoint-based evaluator with 5 comparison plots and CSV output
+- [x] All 4 YAML configs: `yolov11_baseline`, `yolov11_improved`, `rtdetr_baseline`, `rtdetr_improved`
+- [x] YOLOv11 baseline trained — mAP@50: **0.354**
+- [x] YOLOv11 improved trained — mAP@50: **0.366** (+3.4%)
+- [x] RT-DETRv2 baseline trained — mAP@50: **0.523** (+47.8% vs YOLO baseline)
+- [x] RT-DETRv2 improved trained — mAP@50: **0.552** (+55.9% vs YOLO baseline)
+- [x] Ablation study complete with full comparison plots and per-class breakdown
+- [x] End-to-end Colab notebook (`road_detection.ipynb`) with all results
 
 ---
 
