@@ -35,6 +35,7 @@ import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
