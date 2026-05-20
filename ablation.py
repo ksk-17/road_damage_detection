@@ -266,12 +266,13 @@ def compute_roc_data(
         console.print("[yellow]ROC: val set has no negative or no positive images — skipping[/yellow]")
         return None
 
-    # Run predict at very low confidence to capture all detections
+    # Run predict at very low confidence to capture all detections.
+    # Do NOT pass verbose= — the model wrapper doesn't accept it as a kwarg.
     console.print(f"  [dim]ROC: running predict on {len(images)} val images (conf=0.001)…[/dim]")
     max_scores = np.zeros(len(images), dtype=float)
     for i, img_path in enumerate(images):
         try:
-            preds = model.predict(str(img_path), conf=0.001, verbose=False)
+            preds = model.predict(str(img_path), conf=0.001)
             if preds and preds[0].boxes is not None and len(preds[0].boxes) > 0:
                 max_scores[i] = float(preds[0].boxes.conf.max().cpu())
         except Exception:
@@ -290,7 +291,7 @@ def compute_roc_data(
     order    = np.argsort(fprs)
     fprs_s   = fprs[order]
     tprs_s   = tprs[order]
-    auc      = float(np.trapz(tprs_s, fprs_s))
+    auc      = float(np.trapezoid(tprs_s, fprs_s) if hasattr(np, "trapezoid") else np.trapz(tprs_s, fprs_s))
 
     return {
         "fprs":     fprs_s.tolist(),
@@ -319,17 +320,17 @@ def measure_inference_time(
     rng = random.Random(seed)
     samples = rng.sample(images, min(n + 5, len(images)))
 
-    # Warmup
+    # Warmup — do NOT pass verbose=; model wrapper doesn't accept it
     try:
         for img in samples[:5]:
-            model.predict(str(img), conf=0.25, verbose=False)
+            model.predict(str(img), conf=0.25)
     except Exception:
         return None
 
     times_ms: List[float] = []
     for img in samples[5:]:
         t0 = time.perf_counter()
-        model.predict(str(img), conf=0.25, verbose=False)
+        model.predict(str(img), conf=0.25)
         times_ms.append((time.perf_counter() - t0) * 1000.0)
 
     return float(np.mean(times_ms)) if times_ms else None
