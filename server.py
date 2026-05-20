@@ -109,6 +109,26 @@ MODEL_REGISTRY: Dict[str, dict] = {}
 CHECKPOINT_DIR = "./runs"
 OUTPUT_DIR = Path("static/outputs")
 
+# Resolve ffmpeg binary: prefer imageio-ffmpeg (bundled, no system install needed),
+# then fall back to system ffmpeg, then None.
+def _resolve_ffmpeg() -> Optional[str]:
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-version"], capture_output=True, timeout=5
+        )
+        if result.returncode == 0:
+            return "ffmpeg"
+    except Exception:
+        pass
+    return None
+
+FFMPEG_BIN: Optional[str] = _resolve_ffmpeg()
+
 
 # ─── Model loading ────────────────────────────────────────────────────────────
 
@@ -340,7 +360,7 @@ async def predict_video(
         h      = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # Write raw frames with mp4v — will be re-encoded to H.264 below
+        # Always write raw frames with mp4v first (OpenCV can always write this)
         writer = cv2.VideoWriter(
             raw_path, cv2.VideoWriter_fourcc(*"mp4v"), fps_in, (w, h)
         )
@@ -369,11 +389,12 @@ async def predict_video(
         cap.release()
         writer.release()
 
-        # Re-encode to H.264 for browser compatibility (mp4v is not playable in browsers)
-        try:
+        # Re-encode to H.264 so the browser can play it.
+        # FFMPEG_BIN is either the imageio-bundled binary or system ffmpeg.
+        if FFMPEG_BIN:
             subprocess.run(
                 [
-                    "ffmpeg", "-y", "-i", raw_path,
+                    FFMPEG_BIN, "-y", "-i", raw_path,
                     "-vcodec", "libx264", "-pix_fmt", "yuv420p",
                     "-preset", "fast", "-crf", "23",
                     out_path,
@@ -381,8 +402,8 @@ async def predict_video(
                 check=True, capture_output=True, timeout=300,
             )
             os.unlink(raw_path)
-        except Exception:
-            # ffmpeg not available — serve the raw mp4v file (may not play in all browsers)
+        else:
+            # No ffmpeg at all — rename raw file and warn (video likely won't play in browser)
             os.rename(raw_path, out_path)
 
         avg_ms  = round(sum(latencies) / max(len(latencies), 1), 2)
@@ -399,6 +420,7 @@ async def predict_video(
             "total_detections":  len(all_dets),
             "class_counts":      _class_counts(all_dets),
             "per_frame":         frame_data,
+            "ffmpeg_used":       FFMPEG_OK,
         })
 
     finally:
@@ -476,11 +498,19 @@ def main():
     load_all_models(args.checkpoint_dir)
 
     from rich.console import Console
-    Console().print(
+    con = Console()
+    con.print(
         f"\n[bold green]Server ready[/bold green] → "
         f"http://localhost:{args.port}  "
-        f"([dim]{len(MODEL_REGISTRY)} model(s) loaded[/dim])\n"
+        f"([dim]{len(MODEL_REGISTRY)} model(s) loaded[/dim])"
     )
+    if FFMPEG_BIN:
+        src = "imageio-ffmpeg (bundled)" if FFMPEG_BIN != "ffmpeg" else "system ffmpeg"
+        con.print(f"[dim]FFmpeg ready ({src}) — video encoded as H.264 (browser-compatible)[/dim]\n")
+    else:
+        con.print(
+            "[yellow]FFmpeg not found — run `pip install imageio-ffmpeg` to fix video playback[/yellow]\n"
+        )
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

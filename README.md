@@ -85,6 +85,7 @@ Train on Japan (largest/cleanest split), evaluate zero-shot on India and USA, th
 ```
 road_damage_detection/
 ├── README.md
+├── README-local.md                 # Local demo server setup guide
 ├── requirements.txt
 │
 ├── yolov11_baseline.yaml           # YOLOv11 baseline (CIoU, 3-scale FPN)
@@ -160,8 +161,11 @@ python ablation.py --config ablation.yaml \
     --data-dir ./data/RDD_SPLIT
 ```
 
-Outputs written to `runs/ablation/`: bar charts, loss curves, metric curves,
-per-class mAP heatmap, detection grid, and `ablation_results.csv`.
+Outputs written to `runs/ablation/`: bar charts, loss/metric curves, PR curves,
+F1-confidence curves, ROC curves, timing comparison, per-class mAP heatmap,
+detection grid, and `ablation_results.csv`.
+
+Add `--no-roc` to skip the per-image predict sweep (faster runs).
 
 ### 5. Export to ONNX (optional, ~2× faster CPU inference)
 
@@ -174,31 +178,27 @@ The server auto-detects `best.onnx` over `best.pt` — no other changes needed.
 ### 6. Launch Web Demo
 
 ```bash
-# Install server dependencies first
-pip install fastapi uvicorn[standard] python-multipart
+# Install server dependencies
+pip install fastapi "uvicorn[standard]" python-multipart ultralytics opencv-python pillow numpy rich
 
 # Start server (auto-loads all available models)
 python server.py --checkpoint-dir ./runs --port 8000
 # Open http://localhost:8000
 ```
 
-**On Colab (public URL):**
-```python
-!pip install pyngrok
-from pyngrok import ngrok
-import subprocess, threading
-threading.Thread(target=lambda: subprocess.run(
-    ['python', 'server.py', '--checkpoint-dir', CKPT_DIR]
-)).start()
-import time; time.sleep(3)
-print(ngrok.connect(8000))
-```
+The server detects FFmpeg at startup and prints which video codec path it will use:
+- **FFmpeg present** → H.264 re-encoding (guaranteed browser-compatible)
+- **FFmpeg absent** → `avc1` via OpenCV (works natively on Windows/macOS)
+
+> **Checkpoint folder structure:** each model folder must contain a `weights/` subfolder with `best.pt` (or `best.onnx`). The subfolder name must be spelled exactly `weights`.
 
 **Demo features:**
 - **Image tab** — upload any road photo, get annotated detections with per-class breakdown, timing cards (preprocess / inference / postprocess / total ms, FPS)
-- **Video tab** — process video frame-by-frame, download annotated output, latency sparkline chart
+- **Video tab** — process video frame-by-frame, download H.264-encoded annotated output, per-frame latency sparkline chart
 - **Compare tab** — run the same image through all 4 models side-by-side with metrics
 - **Eval Metrics tab** — static results table (mAP, precision, recall, F1, per-class, model specs)
+
+See **[README-local.md](README-local.md)** for the full local setup guide including checkpoint download instructions, ONNX export, and troubleshooting.
 
 ---
 
@@ -259,7 +259,7 @@ RT-DETRv2's Hungarian matching loss is particularly effective for pothole (D40) 
 - [x] `rtdetr_model.py` — RT-DETRv2 wrapper with `HungarianMatcher` implementation
 - [x] `losses.py` — `WIoULoss`, `FocalLoss`, `CIoULoss`, and `RoadDamageDetectionLoss` (Improvement 2)
 - [x] `train.py` — Unified training entry point for both architectures with auto-resume
-- [x] `ablation.py` — Checkpoint-based evaluator with 5 comparison plots and CSV output
+- [x] `ablation.py` — Checkpoint-based evaluator with 9 plots: bar charts, loss/metric curves, PR curves, F1-confidence, ROC curves, timing, detection grid
 - [x] All 4 YAML configs: `yolov11_baseline`, `yolov11_improved`, `rtdetr_baseline`, `rtdetr_improved`
 - [x] YOLOv11 baseline trained — mAP@50: **0.354**
 - [x] YOLOv11 improved trained — mAP@50: **0.366** (+3.4%)
@@ -267,6 +267,11 @@ RT-DETRv2's Hungarian matching loss is particularly effective for pothole (D40) 
 - [x] RT-DETRv2 improved trained — mAP@50: **0.552** (+55.9% vs YOLO baseline)
 - [x] Ablation study complete with full comparison plots and per-class breakdown
 - [x] End-to-end Colab notebook (`road_detection.ipynb`) with all results
+- [x] FastAPI inference server (`server.py`) with image / video / compare endpoints
+- [x] Single-page web UI (`static/index.html`) — dark theme, no build step, latency breakdown, per-frame sparkline
+- [x] ONNX export (`export_onnx.py`) — auto-detected by server for ~2× faster CPU inference
+- [x] Video encoded as H.264 (browser-compatible) via FFmpeg or OpenCV `avc1` fallback
+- [x] Local setup guide (`README-local.md`)
 
 ---
 
