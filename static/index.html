@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Road Damage Detection — CMP 295 SJSU</title>
+<style>
+  :root {
+    --bg:       #0f172a;
+    --surface:  #1e293b;
+    --border:   #334155;
+    --text:     #f1f5f9;
+    --muted:    #94a3b8;
+    --blue:     #3b82f6;
+    --green:    #22c55e;
+    --orange:   #f97316;
+    --purple:   #a855f7;
+    --red:      #ef4444;
+    --yellow:   #eab308;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+
+  /* ── Header ── */
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  header h1 span { color: var(--blue); }
+  .model-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 3px 8px; border-radius: 20px; background: #0f172a; border: 1px solid var(--border); color: var(--muted); }
+  .badge.loaded { border-color: var(--green); color: var(--green); }
+
+  /* ── Layout ── */
+  .layout { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 57px); }
+  aside { background: var(--surface); border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+  main { padding: 20px; overflow-y: auto; }
+
+  /* ── Sidebar components ── */
+  .sidebar-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin-bottom: 10px; }
+  select, input[type=range] { width: 100%; }
+  select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 13px; cursor: pointer; }
+  select:focus { outline: none; border-color: var(--blue); }
+  .model-desc { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  .slider-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .slider-row label { font-size: 12px; color: var(--muted); }
+  .slider-val { font-size: 12px; font-weight: 600; color: var(--text); min-width: 32px; text-align: right; }
+  input[type=range] { accent-color: var(--blue); cursor: pointer; height: 4px; }
+
+  .model-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .model-card .mc-label { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .model-card .mc-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); padding: 2px 0; }
+  .model-card .mc-row span:last-child { color: var(--text); font-weight: 500; }
+  .tag { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-top: 6px; }
+  .tag.onnx   { background: #1d4ed8; color: #bfdbfe; }
+  .tag.pytorch{ background: #7c3aed; color: #ddd6fe; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+  .tab { padding: 10px 18px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--muted); border: 1px solid transparent; border-bottom: none; transition: all 0.15s; }
+  .tab:hover { color: var(--text); background: var(--surface); }
+  .tab.active { color: var(--blue); background: var(--surface); border-color: var(--border); border-bottom-color: var(--surface); margin-bottom: -1px; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Drop zone ── */
+  .dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 40px 20px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface); }
+  .dropzone:hover, .dropzone.dragging { border-color: var(--blue); background: #1e3a5f33; }
+  .dropzone .icon { font-size: 36px; margin-bottom: 10px; }
+  .dropzone p { color: var(--muted); font-size: 13px; }
+  .dropzone p strong { color: var(--text); }
+  .dropzone input { display: none; }
+  .preview-img { width: 100%; border-radius: 8px; border: 1px solid var(--border); max-height: 400px; object-fit: contain; background: #000; }
+
+  /* ── Buttons ── */
+  .btn { padding: 10px 20px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px; }
+  .btn-primary { background: var(--blue); color: white; }
+  .btn-primary:hover:not(:disabled) { background: #2563eb; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .btn-outline:hover { background: var(--surface); }
+  .btn-row { display: flex; gap: 10px; margin-top: 14px; }
+
+  /* ── Metric cards ── */
+  .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+  .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .metric-card .mc-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .metric-card .mc-value { font-size: 26px; font-weight: 700; line-height: 1; }
+  .metric-card .mc-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .col-blue   { color: var(--blue); }
+  .col-green  { color: var(--green); }
+  .col-orange { color: var(--orange); }
+  .col-purple { color: var(--purple); }
+
+  /* ── Results layout ── */
+  .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .panel h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 12px; }
+
+  /* ── Detection list ── */
+  .det-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+  .det-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; background: var(--bg); border-radius: 6px; font-size: 12px; }
+  .det-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .det-class { font-weight: 700; width: 36px; }
+  .det-desc  { color: var(--muted); flex: 1; }
+  .det-conf  { font-weight: 600; }
+  .conf-bar  { height: 4px; border-radius: 2px; margin-top: 3px; }
+  .empty-state { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+
+  /* ── Class breakdown ── */
+  .class-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+  .class-bar-row .cls-name { width: 32px; font-weight: 700; }
+  .class-bar-row .cls-bar-bg { flex: 1; background: var(--bg); border-radius: 4px; height: 14px; overflow: hidden; }
+  .class-bar-row .cls-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .class-bar-row .cls-count { width: 24px; text-align: right; color: var(--muted); }
+
+  /* ── Timing breakdown ── */
+  .timing-bars { display: flex; flex-direction: column; gap: 8px; }
+  .timing-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .timing-label { width: 110px; color: var(--muted); }
+  .timing-bar-bg { flex: 1; background: var(--bg); border-radius: 4px; height: 12px; overflow: hidden; }
+  .timing-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .timing-val { width: 60px; text-align: right; font-weight: 600; }
+
+  /* ── Compare grid ── */
+  .compare-grid { display: grid; gap: 16px; }
+  .compare-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .compare-card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .compare-card-header h4 { font-size: 13px; font-weight: 600; }
+  .compare-card-body { padding: 12px 16px; }
+  .compare-img { width: 100%; border-radius: 6px; max-height: 300px; object-fit: contain; background: #000; }
+  .compare-stats { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; }
+  .compare-stat { text-align: center; }
+  .compare-stat .cs-val { font-size: 18px; font-weight: 700; }
+  .compare-stat .cs-lbl { color: var(--muted); }
+
+  /* ── Checkbox group ── */
+  .checkbox-group { display: flex; flex-direction: column; gap: 8px; }
+  .checkbox-group label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); }
+  .checkbox-group label:hover { border-color: var(--blue); }
+  .checkbox-group input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; cursor: pointer; }
+  .checkbox-group label.checked { border-color: var(--blue); background: #1e3a5f33; }
+
+  /* ── Video ── */
+  video { width: 100%; border-radius: 8px; border: 1px solid var(--border); background: #000; }
+  .progress-bar-wrap { background: var(--bg); border-radius: 6px; height: 8px; overflow: hidden; margin: 8px 0; }
+  .progress-bar-fill { height: 100%; background: var(--blue); border-radius: 6px; transition: width 0.3s; }
+
+  /* ── Per-frame chart ── */
+  canvas.sparkline { width: 100%; height: 80px; border-radius: 6px; }
+
+  /* ── Spinner ── */
+  .spinner { display: none; align-items: center; gap: 10px; padding: 16px; color: var(--muted); font-size: 13px; }
+  .spinner.show { display: flex; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin-icon { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.7s linear infinite; }
+
+  /* ── Eval table ── */
+  table.eval-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.eval-table th { text-align: left; padding: 6px 10px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+  table.eval-table td { padding: 6px 10px; border-bottom: 1px solid #1e293b; }
+  table.eval-table tr:last-child td { border-bottom: none; }
+  table.eval-table tr.highlight td { background: #1e3a5f22; }
+  .bar-cell { display: flex; align-items: center; gap: 8px; }
+  .bar-cell .bar-bg { flex: 1; background: var(--bg); border-radius: 3px; height: 10px; overflow: hidden; }
+  .bar-cell .bar-fill { height: 100%; border-radius: 3px; background: var(--blue); }
+  .bar-cell .bar-val { width: 44px; font-weight: 600; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { border-right: none; border-bottom: 1px solid var(--border); }
+    .metrics-grid { grid-template-columns: 1fr 1fr; }
+    .results-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🛣️ Road Damage Detection <span>· CMP 295 SJSU</span></h1>
+  <div class="model-badges" id="model-badges">
+    <span class="badge">Loading models…</span>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- ── Sidebar ── -->
+  <aside>
+    <div class="sidebar-section">
+      <h3>Model</h3>
+      <select id="model-select">
+        <option value="">Loading…</option>
+      </select>
+      <div class="model-desc" id="model-desc"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Detection Settings</h3>
+      <div class="slider-row">
+        <label>Confidence</label>
+        <span class="slider-val" id="conf-val">0.25</span>
+      </div>
+      <input type="range" id="conf-slider" min="0.05" max="0.95" step="0.05" value="0.25">
+
+      <div class="slider-row" style="margin-top:12px">
+        <label>IoU Threshold</label>
+        <span class="slider-val" id="iou-val">0.45</span>
+      </div>
+      <input type="range" id="iou-slider" min="0.1" max="0.9" step="0.05" value="0.45">
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Loaded Model</h3>
+      <div class="model-card" id="sidebar-model-card">
+        <div class="mc-label" id="sc-label">—</div>
+        <div class="mc-row"><span>Format</span><span id="sc-format">—</span></div>
+        <div class="mc-row"><span>Size</span><span id="sc-size">—</span></div>
+        <div class="mc-row"><span>Default conf</span><span id="sc-conf">—</span></div>
+        <div class="mc-row"><span>Val mAP@50</span><span id="sc-map">—</span></div>
+        <div id="sc-tag"></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section" style="margin-top:auto">
+      <div style="font-size:11px;color:var(--muted);line-height:1.6">
+        Sumanth K. · Akanksha T. · Arathi B.<br>
+        YOLOv11 · RT-DETRv2 · ONNX Runtime
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main>
+    <div class="tabs">
+      <div class="tab active" data-tab="image">📸 Image</div>
+      <div class="tab" data-tab="video">🎬 Video</div>
+      <div class="tab" data-tab="compare">⚖️ Compare Models</div>
+      <div class="tab" data-tab="metrics">📊 Eval Metrics</div>
+    </div>
+
+    <!-- ───────────── Image Tab ───────────── -->
+    <div class="tab-panel active" id="tab-image">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div class="dropzone" id="img-dropzone">
+            <div class="icon">🖼️</div>
+            <p><strong>Drop an image here</strong></p>
+            <p>or click to upload · JPG / PNG</p>
+            <input type="file" id="img-file" accept="image/*">
+          </div>
+          <img id="img-preview" class="preview-img" style="display:none;margin-top:12px">
+          <div class="btn-row">
+            <button class="btn btn-primary" id="img-detect-btn" disabled>
+              <span>🔍</span> Detect
+            </button>
+            <button class="btn btn-outline" id="img-clear-btn">Clear</button>
+          </div>
+        </div>
+        <div>
+          <div class="spinner" id="img-spinner"><div class="spin-icon"></div> Running inference…</div>
+          <img id="img-result" class="preview-img" style="display:none">
+          <div id="img-metrics" style="display:none">
+            <div class="metrics-grid">
+              <div class="metric-card"><div class="mc-label">Latency</div><div class="mc-value col-blue" id="m-latency">—</div><div class="mc-sub">milliseconds</div></div>
+              <div class="metric-card"><div class="mc-label">Throughput</div><div class="mc-value col-green" id="m-fps">—</div><div class="mc-sub">frames / sec</div></div>
+              <div class="metric-card"><div class="mc-label">Detections</div><div class="mc-value col-orange" id="m-dets">—</div><div class="mc-sub">instances found</div></div>
+              <div class="metric-card"><div class="mc-label">Model</div><div class="mc-value col-purple" id="m-fmt" style="font-size:16px;padding-top:4px">—</div><div class="mc-sub" id="m-size">—</div></div>
+            </div>
+            <div class="results-grid">
+              <div class="panel">
+                <h4>Timing Breakdown</h4>
+                <div class="timing-bars" id="timing-bars"></div>
+              </div>
+              <div class="panel">
+                <h4>Detected Classes</h4>
+                <div id="class-breakdown"></div>
+              </div>
+            </div>
+            <div class="panel" style="margin-top:16px">
+              <h4>Detections</h4>
+              <div class="det-list" id="det-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────── Video Tab ───────────── -->
+    <div class="tab-panel" id="tab-video">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div class="dropzone" id="vid-dropzone">
+            <div class="icon">🎬</div>
+            <p><strong>Drop a video here</strong></p>
+            <p>or click to upload · MP4 / AVI</p>
+            <input type="file" id="vid-file" accept="video/*">
+          </div>
+          <div style="margin-top:12px">
+            <div class="slider-row">
+              <label>Max frames</label>
+              <span class="slider-val" id="maxframes-val">150</span>
+            </div>
+            <input type="range" id="maxframes-slider" min="10" max="500" step="10" value="150">
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="vid-detect-btn" disabled>
+              <span>▶️</span> Process Video
+            </button>
+            <button class="btn btn-outline" id="vid-clear-btn">Clear</button>
+          </div>
+        </div>
+        <div>
+          <div class="spinner" id="vid-spinner"><div class="spin-icon"></div> Processing frames…</div>
+          <div id="vid-result" style="display:none">
+            <video id="vid-output" controls></video>
+            <div class="metrics-grid" style="margin-top:12px">
+              <div class="metric-card"><div class="mc-label">Avg Latency</div><div class="mc-value col-blue" id="v-latency">—</div><div class="mc-sub">ms / frame</div></div>
+              <div class="metric-card"><div class="mc-label">Avg FPS</div><div class="mc-value col-green" id="v-fps">—</div><div class="mc-sub">frames / sec</div></div>
+              <div class="metric-card"><div class="mc-label">Frames</div><div class="mc-value col-orange" id="v-frames">—</div><div class="mc-sub">processed</div></div>
+              <div class="metric-card"><div class="mc-label">Detections</div><div class="mc-value col-purple" id="v-dets">—</div><div class="mc-sub">total</div></div>
+            </div>
+            <div class="panel" style="margin-top:12px">
+              <h4>Latency per Frame</h4>
+              <canvas id="latency-chart" class="sparkline"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────── Compare Tab ───────────── -->
+    <div class="tab-panel" id="tab-compare">
+      <div style="display:grid;grid-template-columns:280px 1fr;gap:16px">
+        <div>
+          <div class="dropzone" id="cmp-dropzone">
+            <div class="icon">🖼️</div>
+            <p><strong>Drop image here</strong></p>
+            <input type="file" id="cmp-file" accept="image/*">
+          </div>
+          <img id="cmp-preview" class="preview-img" style="display:none;margin-top:10px">
+          <div style="margin-top:14px">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px">Select Models</div>
+            <div class="checkbox-group" id="compare-checkboxes"></div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="cmp-btn" disabled>⚖️ Compare</button>
+          </div>
+        </div>
+        <div>
+          <div class="spinner" id="cmp-spinner"><div class="spin-icon"></div> Running all models…</div>
+          <div class="compare-grid" id="compare-results" style="grid-template-columns:1fr 1fr"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────── Metrics Tab ───────────── -->
+    <div class="tab-panel" id="tab-metrics">
+      <div style="display:grid;gap:16px">
+        <div class="panel">
+          <h4>Overall Validation Metrics — RDD2022 (Japan split, 5,758 images)</h4>
+          <table class="eval-table" id="overall-table">
+            <thead><tr><th>Model</th><th>Format</th><th>mAP@50</th><th>mAP@50-95</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="panel">
+          <h4>Per-Class mAP@50</h4>
+          <table class="eval-table" id="class-table">
+            <thead><tr><th>Model</th><th>D00 Longitudinal</th><th>D10 Transverse</th><th>D20 Alligator</th><th>D40 Pothole</th><th>D44 Other</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="panel">
+          <h4>Model Specs</h4>
+          <table class="eval-table" id="specs-table">
+            <thead><tr><th>Model</th><th>Architecture</th><th>Parameters</th><th>GFLOPs</th><th>Format</th><th>Size</th><th>Inference (T4)</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────────────
+const API = '';  // same origin
+
+const CLASS_INFO = {
+  D00: { name: 'Longitudinal Crack', color: '#ef4444' },
+  D10: { name: 'Transverse Crack',   color: '#f97316' },
+  D20: { name: 'Alligator Crack',    color: '#eab308' },
+  D40: { name: 'Pothole',            color: '#22c55e' },
+  D44: { name: 'Other Damage',       color: '#a855f7' },
+};
+
+const MODEL_SPECS = {
+  yolov11_baseline:  { arch: 'YOLOv11m CNN',    params: '20M', gflops: '67.7', latency: '~19ms' },
+  yolov11_improved:  { arch: 'YOLOv11m CNN+P2', params: '20M', gflops: '67.7', latency: '~19ms' },
+  rtdetrv2_baseline: { arch: 'RT-DETRv2-L',     params: '32M', gflops: '103.5', latency: '~29ms' },
+  rtdetrv2_improved: { arch: 'RT-DETRv2-L',     params: '32M', gflops: '103.5', latency: '~29ms' },
+};
+
+let loadedModels = {};
+
+// ── Fetch models on load ─────────────────────────────────────────────────────
+async function fetchModels() {
+  try {
+    const res  = await fetch(`${API}/api/models`);
+    loadedModels = await res.json();
+    buildModelSelect();
+    buildBadges();
+    buildCompareCheckboxes();
+    buildMetricsTables();
+  } catch(e) {
+    document.getElementById('model-badges').innerHTML =
+      '<span class="badge" style="border-color:#ef4444;color:#ef4444">Server offline</span>';
+  }
+}
+
+function buildModelSelect() {
+  const sel = document.getElementById('model-select');
+  sel.innerHTML = '';
+  const order = ['rtdetrv2_improved','rtdetrv2_baseline','yolov11_improved','yolov11_baseline'];
+  order.forEach(k => {
+    if (!loadedModels[k]) return;
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = loadedModels[k].label;
+    sel.appendChild(opt);
+  });
+  sel.dispatchEvent(new Event('change'));
+}
+
+function buildBadges() {
+  const el = document.getElementById('model-badges');
+  el.innerHTML = Object.entries(loadedModels).map(([k, v]) =>
+    `<span class="badge loaded">${v.label} · ${v.format.toUpperCase()}</span>`
+  ).join('') || '<span class="badge">No models loaded</span>';
+}
+
+function buildCompareCheckboxes() {
+  const el = document.getElementById('compare-checkboxes');
+  el.innerHTML = '';
+  Object.entries(loadedModels).forEach(([k, v]) => {
+    const label = document.createElement('label');
+    label.htmlFor = `chk-${k}`;
+    label.innerHTML = `<input type="checkbox" id="chk-${k}" value="${k}" checked> ${v.label}`;
+    label.classList.add('checked');
+    label.querySelector('input').addEventListener('change', e => {
+      label.classList.toggle('checked', e.target.checked);
+    });
+    el.appendChild(label);
+  });
+}
+
+function buildMetricsTables() {
+  // Overall table
+  const otb = document.querySelector('#overall-table tbody');
+  otb.innerHTML = '';
+  const order = ['yolov11_baseline','yolov11_improved','rtdetrv2_baseline','rtdetrv2_improved'];
+  order.forEach((k, i) => {
+    const m = loadedModels[k];
+    if (!m) return;
+    const e = m.eval || {};
+    const tr = document.createElement('tr');
+    if (k === 'rtdetrv2_improved') tr.classList.add('highlight');
+    tr.innerHTML = `
+      <td><strong>${m.label}</strong></td>
+      <td><span class="tag ${m.format}">${m.format.toUpperCase()}</span></td>
+      <td><div class="bar-cell"><div class="bar-bg"><div class="bar-fill" style="width:${((e.mAP50||0)*100).toFixed(0)}%"></div></div><span class="bar-val">${(e.mAP50||0).toFixed(3)}</span></div></td>
+      <td>${(e.mAP50_95||0).toFixed(3)}</td>
+      <td>${(e.precision||0).toFixed(3)}</td>
+      <td>${(e.recall||0).toFixed(3)}</td>
+      <td>${(e.f1||0).toFixed(3)}</td>
+    `;
+    otb.appendChild(tr);
+  });
+
+  // Per-class table
+  const ctb = document.querySelector('#class-table tbody');
+  ctb.innerHTML = '';
+  order.forEach(k => {
+    const m = loadedModels[k];
+    if (!m) return;
+    const pc = m.per_class || {};
+    const tr = document.createElement('tr');
+    if (k === 'rtdetrv2_improved') tr.classList.add('highlight');
+    tr.innerHTML = `
+      <td><strong>${m.label}</strong></td>
+      ${['D00','D10','D20','D40','D44'].map(c => `
+        <td><div class="bar-cell">
+          <div class="bar-bg"><div class="bar-fill" style="width:${((pc[c]||0)*100).toFixed(0)}%;background:${CLASS_INFO[c].color}"></div></div>
+          <span class="bar-val">${(pc[c]||0).toFixed(3)}</span>
+        </div></td>`).join('')}
+    `;
+    ctb.appendChild(tr);
+  });
+
+  // Specs table
+  const stb = document.querySelector('#specs-table tbody');
+  stb.innerHTML = '';
+  order.forEach(k => {
+    const m  = loadedModels[k];
+    const sp = MODEL_SPECS[k] || {};
+    if (!m) return;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${m.label}</strong></td>
+      <td>${sp.arch||'—'}</td>
+      <td>${sp.params||'—'}</td>
+      <td>${sp.gflops||'—'}</td>
+      <td><span class="tag ${m.format}">${m.format.toUpperCase()}</span></td>
+      <td>${m.size_mb} MB</td>
+      <td>${sp.latency||'—'}</td>
+    `;
+    stb.appendChild(tr);
+  });
+}
+
+// ── Sidebar model selector ───────────────────────────────────────────────────
+document.getElementById('model-select').addEventListener('change', e => {
+  const k = e.target.value;
+  const m = loadedModels[k];
+  if (!m) return;
+  document.getElementById('model-desc').textContent = m.description || '';
+  document.getElementById('sc-label').textContent = m.label;
+  document.getElementById('sc-format').textContent = m.format.toUpperCase();
+  document.getElementById('sc-size').textContent = `${m.size_mb} MB`;
+  document.getElementById('sc-conf').textContent = m.default_conf;
+  document.getElementById('sc-map').textContent = m.eval?.mAP50?.toFixed(3) ?? '—';
+  document.getElementById('sc-tag').innerHTML =
+    `<span class="tag ${m.format}">${m.format.toUpperCase()}</span>`;
+  document.getElementById('conf-slider').value = m.default_conf;
+  document.getElementById('conf-val').textContent = m.default_conf;
+  document.getElementById('iou-slider').value = m.default_iou;
+  document.getElementById('iou-val').textContent = m.default_iou;
+});
+
+document.getElementById('conf-slider').addEventListener('input', e => {
+  document.getElementById('conf-val').textContent = parseFloat(e.target.value).toFixed(2);
+});
+document.getElementById('iou-slider').addEventListener('input', e => {
+  document.getElementById('iou-val').textContent = parseFloat(e.target.value).toFixed(2);
+});
+document.getElementById('maxframes-slider').addEventListener('input', e => {
+  document.getElementById('maxframes-val').textContent = e.target.value;
+});
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+  });
+});
+
+// ── Drop zone helper ─────────────────────────────────────────────────────────
+function setupDropzone(zoneId, inputId, onFile) {
+  const zone  = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => onFile(input.files[0]));
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragging'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragging');
+    onFile(e.dataTransfer.files[0]);
+  });
+}
+
+// ── Rendering helpers ────────────────────────────────────────────────────────
+function renderTimingBars(timing, container) {
+  const max = timing.total_ms;
+  const rows = [
+    ['Preprocess', timing.preprocess_ms, '#3b82f6'],
+    ['Inference',  timing.inference_ms,  '#22c55e'],
+    ['Postprocess',timing.postprocess_ms,'#f97316'],
+  ];
+  container.innerHTML = rows.map(([lbl, val, col]) => `
+    <div class="timing-row">
+      <span class="timing-label">${lbl}</span>
+      <div class="timing-bar-bg"><div class="timing-bar-fill" style="width:${(val/max*100).toFixed(0)}%;background:${col}"></div></div>
+      <span class="timing-val" style="color:${col}">${val.toFixed(1)} ms</span>
+    </div>
+  `).join('') + `
+    <div class="timing-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
+      <span class="timing-label" style="color:var(--text);font-weight:600">Total</span>
+      <div class="timing-bar-bg"><div class="timing-bar-fill" style="width:100%;background:#64748b"></div></div>
+      <span class="timing-val" style="color:var(--text);font-weight:700">${timing.total_ms.toFixed(1)} ms</span>
+    </div>
+  `;
+}
+
+function renderClassBreakdown(classCounts, container) {
+  if (!classCounts || !Object.keys(classCounts).length) {
+    container.innerHTML = '<div class="empty-state">No detections</div>';
+    return;
+  }
+  const maxCount = Math.max(...Object.values(classCounts));
+  container.innerHTML = Object.entries(classCounts).map(([cls, cnt]) => {
+    const info = CLASS_INFO[cls] || { name: cls, color: '#94a3b8' };
+    return `
+      <div class="class-bar-row">
+        <span class="cls-name" style="color:${info.color}">${cls}</span>
+        <div class="cls-bar-bg"><div class="cls-bar-fill" style="width:${(cnt/maxCount*100).toFixed(0)}%;background:${info.color}"></div></div>
+        <span class="cls-count">${cnt}</span>
+      </div>`;
+  }).join('');
+}
+
+function renderDetList(detections, container) {
+  if (!detections.length) {
+    container.innerHTML = '<div class="empty-state">No damage detected above threshold</div>';
+    return;
+  }
+  const sorted = [...detections].sort((a,b) => b.confidence - a.confidence);
+  container.innerHTML = sorted.slice(0, 50).map(d => {
+    const info = CLASS_INFO[d.class] || { name: d.class, color: '#94a3b8' };
+    return `
+      <div class="det-item">
+        <div class="det-dot" style="background:${info.color}"></div>
+        <span class="det-class" style="color:${info.color}">${d.class}</span>
+        <span class="det-desc">${info.name}</span>
+        <span class="det-conf">${(d.confidence*100).toFixed(1)}%</span>
+      </div>`;
+  }).join('') + (detections.length > 50 ? `<div class="empty-state">+${detections.length-50} more</div>` : '');
+}
+
+function drawSparkline(canvasId, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !data.length) return;
+  const ctx = canvas.getContext('2d');
+  canvas.width  = canvas.offsetWidth  * window.devicePixelRatio;
+  canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  const maxY = Math.max(...data) * 1.1, minY = 0;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(0, 0, W, H);
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = (i / (data.length - 1)) * W;
+    const y = H - ((v - minY) / (maxY - minY)) * H;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Fill
+  ctx.lineTo(W, H); ctx.lineTo(0, H);
+  ctx.fillStyle = '#3b82f633';
+  ctx.fill();
+}
+
+// ── Image Tab ────────────────────────────────────────────────────────────────
+let imgFile = null;
+
+setupDropzone('img-dropzone', 'img-file', file => {
+  imgFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById('img-preview');
+    prev.src = e.target.result;
+    prev.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+  document.getElementById('img-detect-btn').disabled = false;
+  document.getElementById('img-result').style.display = 'none';
+  document.getElementById('img-metrics').style.display = 'none';
+});
+
+document.getElementById('img-clear-btn').addEventListener('click', () => {
+  imgFile = null;
+  document.getElementById('img-preview').style.display = 'none';
+  document.getElementById('img-result').style.display = 'none';
+  document.getElementById('img-metrics').style.display = 'none';
+  document.getElementById('img-detect-btn').disabled = true;
+  document.getElementById('img-file').value = '';
+});
+
+document.getElementById('img-detect-btn').addEventListener('click', async () => {
+  if (!imgFile) return;
+  const model = document.getElementById('model-select').value;
+  const conf  = document.getElementById('conf-slider').value;
+  const iou   = document.getElementById('iou-slider').value;
+
+  const btn = document.getElementById('img-detect-btn');
+  btn.disabled = true;
+  document.getElementById('img-spinner').classList.add('show');
+  document.getElementById('img-result').style.display = 'none';
+  document.getElementById('img-metrics').style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('file', imgFile);
+  fd.append('model_name', model);
+  fd.append('conf', conf);
+  fd.append('iou', iou);
+
+  try {
+    const res  = await fetch(`${API}/api/predict/image`, { method: 'POST', body: fd });
+    const data = await res.json();
+
+    document.getElementById('img-result').src = `data:image/jpeg;base64,${data.image_b64}`;
+    document.getElementById('img-result').style.display = 'block';
+
+    document.getElementById('m-latency').textContent = data.timing.total_ms.toFixed(1);
+    document.getElementById('m-fps').textContent = data.timing.fps.toFixed(1);
+    document.getElementById('m-dets').textContent = data.total_detections;
+    document.getElementById('m-fmt').textContent = data.format.toUpperCase();
+    document.getElementById('m-size').textContent = `${data.size_mb} MB`;
+
+    renderTimingBars(data.timing, document.getElementById('timing-bars'));
+    renderClassBreakdown(data.class_counts, document.getElementById('class-breakdown'));
+    renderDetList(data.detections, document.getElementById('det-list'));
+
+    document.getElementById('img-metrics').style.display = 'block';
+  } catch(e) {
+    alert('Inference failed: ' + e.message);
+  } finally {
+    document.getElementById('img-spinner').classList.remove('show');
+    btn.disabled = false;
+  }
+});
+
+// ── Video Tab ────────────────────────────────────────────────────────────────
+let vidFile = null;
+
+setupDropzone('vid-dropzone', 'vid-file', file => {
+  vidFile = file;
+  document.getElementById('vid-detect-btn').disabled = false;
+  document.getElementById('vid-result').style.display = 'none';
+});
+
+document.getElementById('vid-clear-btn').addEventListener('click', () => {
+  vidFile = null;
+  document.getElementById('vid-detect-btn').disabled = true;
+  document.getElementById('vid-result').style.display = 'none';
+  document.getElementById('vid-file').value = '';
+});
+
+document.getElementById('vid-detect-btn').addEventListener('click', async () => {
+  if (!vidFile) return;
+  const model = document.getElementById('model-select').value;
+  const conf  = document.getElementById('conf-slider').value;
+  const iou   = document.getElementById('iou-slider').value;
+  const maxF  = document.getElementById('maxframes-slider').value;
+
+  const btn = document.getElementById('vid-detect-btn');
+  btn.disabled = true;
+  document.getElementById('vid-spinner').classList.add('show');
+  document.getElementById('vid-result').style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('file', vidFile);
+  fd.append('model_name', model);
+  fd.append('conf', conf);
+  fd.append('iou', iou);
+  fd.append('max_frames', maxF);
+
+  try {
+    const res  = await fetch(`${API}/api/predict/video`, { method: 'POST', body: fd });
+    const data = await res.json();
+
+    document.getElementById('vid-output').src = data.video_url;
+    document.getElementById('v-latency').textContent = data.avg_latency_ms.toFixed(1);
+    document.getElementById('v-fps').textContent = data.avg_fps.toFixed(1);
+    document.getElementById('v-frames').textContent = data.frames_processed;
+    document.getElementById('v-dets').textContent = data.total_detections;
+    document.getElementById('vid-result').style.display = 'block';
+
+    if (data.per_frame?.length) {
+      setTimeout(() => drawSparkline('latency-chart', data.per_frame.map(f => f.latency_ms)), 50);
+    }
+  } catch(e) {
+    alert('Video processing failed: ' + e.message);
+  } finally {
+    document.getElementById('vid-spinner').classList.remove('show');
+    btn.disabled = false;
+  }
+});
+
+// ── Compare Tab ──────────────────────────────────────────────────────────────
+let cmpFile = null;
+
+setupDropzone('cmp-dropzone', 'cmp-file', file => {
+  cmpFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById('cmp-preview');
+    prev.src = e.target.result;
+    prev.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+  document.getElementById('cmp-btn').disabled = false;
+});
+
+document.getElementById('cmp-btn').addEventListener('click', async () => {
+  if (!cmpFile) return;
+  const selected = [...document.querySelectorAll('#compare-checkboxes input:checked')].map(c => c.value);
+  if (!selected.length) { alert('Select at least one model'); return; }
+
+  const conf = document.getElementById('conf-slider').value;
+  const iou  = document.getElementById('iou-slider').value;
+  const btn  = document.getElementById('cmp-btn');
+  btn.disabled = true;
+  document.getElementById('cmp-spinner').classList.add('show');
+  document.getElementById('compare-results').innerHTML = '';
+
+  const fd = new FormData();
+  fd.append('file', cmpFile);
+  fd.append('model_names', selected.join(','));
+  fd.append('conf', conf);
+  fd.append('iou', iou);
+
+  try {
+    const res  = await fetch(`${API}/api/predict/compare`, { method: 'POST', body: fd });
+    const data = await res.json();
+
+    const grid = document.getElementById('compare-results');
+    const cols  = Math.min(selected.length, 2);
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    grid.innerHTML = '';
+
+    Object.entries(data).forEach(([name, r]) => {
+      const card = document.createElement('div');
+      card.className = 'compare-card';
+      const classBars = Object.entries(r.class_counts || {}).map(([cls, cnt]) => {
+        const info = CLASS_INFO[cls] || { color: '#94a3b8' };
+        return `<span style="color:${info.color};font-weight:700">${cls}:${cnt}</span>`;
+      }).join(' ');
+
+      card.innerHTML = `
+        <div class="compare-card-header">
+          <h4>${r.label} <span class="tag ${r.format}">${r.format.toUpperCase()}</span></h4>
+          <span style="font-size:11px;color:var(--muted)">${r.size_mb} MB</span>
+        </div>
+        <div class="compare-card-body">
+          <img class="compare-img" src="data:image/jpeg;base64,${r.image_b64}">
+          <div class="compare-stats">
+            <div class="compare-stat"><div class="cs-val col-blue">${r.timing.total_ms.toFixed(0)}<span style="font-size:12px">ms</span></div><div class="cs-lbl">Latency</div></div>
+            <div class="compare-stat"><div class="cs-val col-green">${r.timing.fps.toFixed(0)}</div><div class="cs-lbl">FPS</div></div>
+            <div class="compare-stat"><div class="cs-val col-orange">${r.total_detections}</div><div class="cs-lbl">Detections</div></div>
+          </div>
+          <div style="margin-top:8px;font-size:12px;color:var(--muted)">${classBars || 'No detections'}</div>
+          ${r.eval_metrics?.mAP50 ? `<div style="margin-top:8px;font-size:11px;color:var(--muted)">Val mAP@50: <strong style="color:var(--text)">${r.eval_metrics.mAP50.toFixed(3)}</strong></div>` : ''}
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  } catch(e) {
+    alert('Compare failed: ' + e.message);
+  } finally {
+    document.getElementById('cmp-spinner').classList.remove('show');
+    btn.disabled = false;
+  }
+});
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+fetchModels();
+</script>
+</body>
+</html>

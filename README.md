@@ -93,12 +93,16 @@ road_damage_detection/
 ├── rtdetr_improved.yaml            # RT-DETRv2 + domain adapt + mosaic + copy-paste
 ├── ablation.yaml                   # Model registry for ablation study (no training)
 │
-├── yolov11_model.py                # YOLOv11 wrapper + FourScaleFPNHead implementation
+├── yolov11_model.py                # YOLOv11 wrapper + FourScaleFPNHead
 ├── rtdetr_model.py                 # RT-DETRv2 wrapper + HungarianMatcher
 ├── losses.py                       # FocalLoss, WIoULoss, CIoULoss, RoadDamageDetectionLoss
 │
-├── train.py                        # Main training entry point (supports all models/configs)
-├── ablation.py                     # Checkpoint-based evaluator + comparison charts/tables
+├── train.py                        # Main training entry point (supports all 4 configs)
+├── ablation.py                     # Checkpoint-based evaluator + 5 comparison plots
+├── export_onnx.py                  # Export .pt checkpoints → ONNX (2× faster on CPU)
+├── server.py                       # FastAPI inference server (image, video, compare)
+├── static/
+│   └── index.html                  # Single-page web frontend (no build step)
 │
 └── road_detection.ipynb            # End-to-end Colab notebook with all results and plots
 ```
@@ -159,11 +163,42 @@ python ablation.py --config ablation.yaml \
 Outputs written to `runs/ablation/`: bar charts, loss curves, metric curves,
 per-class mAP heatmap, detection grid, and `ablation_results.csv`.
 
-### 5. Launch Web Demo
+### 5. Export to ONNX (optional, ~2× faster CPU inference)
 
 ```bash
-streamlit run app/demo.py
+python export_onnx.py --checkpoint-dir ./runs
 ```
+
+The server auto-detects `best.onnx` over `best.pt` — no other changes needed.
+
+### 6. Launch Web Demo
+
+```bash
+# Install server dependencies first
+pip install fastapi uvicorn[standard] python-multipart
+
+# Start server (auto-loads all available models)
+python server.py --checkpoint-dir ./runs --port 8000
+# Open http://localhost:8000
+```
+
+**On Colab (public URL):**
+```python
+!pip install pyngrok
+from pyngrok import ngrok
+import subprocess, threading
+threading.Thread(target=lambda: subprocess.run(
+    ['python', 'server.py', '--checkpoint-dir', CKPT_DIR]
+)).start()
+import time; time.sleep(3)
+print(ngrok.connect(8000))
+```
+
+**Demo features:**
+- **Image tab** — upload any road photo, get annotated detections with per-class breakdown, timing cards (preprocess / inference / postprocess / total ms, FPS)
+- **Video tab** — process video frame-by-frame, download annotated output, latency sparkline chart
+- **Compare tab** — run the same image through all 4 models side-by-side with metrics
+- **Eval Metrics tab** — static results table (mAP, precision, recall, F1, per-class, model specs)
 
 ---
 
