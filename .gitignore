@@ -3,6 +3,7 @@ __pycache__/
 
 data/
 runs/
+static/outputs/
 
 *.pt
 

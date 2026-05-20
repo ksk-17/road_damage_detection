@@ -29,6 +29,7 @@ CMP 295 SJSU | Road Damage Detection
 import argparse
 import base64
 import os
+import subprocess
 import tempfile
 import time
 import uuid
@@ -326,7 +327,10 @@ async def predict_video(
         tmp.write(await file.read())
         tmp_in = tmp.name
 
-    out_name = f"{uuid.uuid4().hex}.mp4"
+    uid      = uuid.uuid4().hex
+    raw_name = f"{uid}_raw.mp4"
+    out_name = f"{uid}.mp4"
+    raw_path = str(OUTPUT_DIR / raw_name)
     out_path = str(OUTPUT_DIR / out_name)
 
     try:
@@ -336,8 +340,9 @@ async def predict_video(
         h      = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+        # Write raw frames with mp4v — will be re-encoded to H.264 below
         writer = cv2.VideoWriter(
-            out_path, cv2.VideoWriter_fourcc(*"mp4v"), fps_in, (w, h)
+            raw_path, cv2.VideoWriter_fourcc(*"mp4v"), fps_in, (w, h)
         )
 
         entry        = MODEL_REGISTRY[model_name]
@@ -363,6 +368,22 @@ async def predict_video(
 
         cap.release()
         writer.release()
+
+        # Re-encode to H.264 for browser compatibility (mp4v is not playable in browsers)
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", raw_path,
+                    "-vcodec", "libx264", "-pix_fmt", "yuv420p",
+                    "-preset", "fast", "-crf", "23",
+                    out_path,
+                ],
+                check=True, capture_output=True, timeout=300,
+            )
+            os.unlink(raw_path)
+        except Exception:
+            # ffmpeg not available — serve the raw mp4v file (may not play in all browsers)
+            os.rename(raw_path, out_path)
 
         avg_ms  = round(sum(latencies) / max(len(latencies), 1), 2)
         avg_fps = round(1000 / max(avg_ms, 0.1), 1)
