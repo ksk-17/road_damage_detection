@@ -239,6 +239,19 @@ All models trained on **Japan** split (RDD2022), evaluated on the full val set.
 
 RT-DETRv2 Improved achieves **+19.8 mAP@50 points** over the YOLOv11 baseline — a 56% relative improvement.
 
+### GPU Inference Latency (Tesla T4)
+
+Measured via `ablation.py` on 30 val images with 5-image warmup.
+
+| Model | ms / image | FPS |
+|---|---|---|
+| YOLOv11 Baseline | 25.9 ms | 38.6 |
+| YOLOv11 Improved | 26.8 ms | 37.3 |
+| RT-DETRv2 Baseline | 51.8 ms | 19.3 |
+| **RT-DETRv2 Improved** | **51.5 ms** | **19.4** |
+
+YOLOv11 is ~2× faster than RT-DETRv2 on GPU; the accuracy–speed trade-off favours RT-DETRv2 Improved for offline analysis and YOLOv11 Improved for real-time drone deployment.
+
 ### Per-Class mAP@50
 
 | Class | YOLOv11 Base | YOLOv11 Impr | RT-DETRv2 Base | RT-DETRv2 Impr |

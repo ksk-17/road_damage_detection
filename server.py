@@ -88,12 +88,14 @@ MODEL_META: Dict[str, dict] = {
     },
 }
 
-# Known eval results — shown in the Compare panel
+# Known eval results — shown in the Compare / Eval Metrics panels.
+# Accuracy metrics: val set (RDD2022, Japan split, 5758 images).
+# Latency: measured on Tesla T4 GPU via ablation.py measure_inference_time() (30 images, warmup=5).
 EVAL_RESULTS = {
-    "yolov11_baseline":  {"mAP50": 0.354, "mAP50_95": 0.161, "precision": 0.490, "recall": 0.356, "f1": 0.412},
-    "yolov11_improved":  {"mAP50": 0.366, "mAP50_95": 0.175, "precision": 0.490, "recall": 0.373, "f1": 0.423},
-    "rtdetrv2_baseline": {"mAP50": 0.523, "mAP50_95": 0.238, "precision": 0.598, "recall": 0.507, "f1": 0.549},
-    "rtdetrv2_improved": {"mAP50": 0.552, "mAP50_95": 0.242, "precision": 0.612, "recall": 0.531, "f1": 0.569},
+    "yolov11_baseline":  {"mAP50": 0.354, "mAP50_95": 0.161, "precision": 0.490, "recall": 0.356, "f1": 0.412, "gpu_ms": 25.9,  "gpu_fps": 38.6},
+    "yolov11_improved":  {"mAP50": 0.366, "mAP50_95": 0.175, "precision": 0.490, "recall": 0.373, "f1": 0.423, "gpu_ms": 26.8,  "gpu_fps": 37.3},
+    "rtdetrv2_baseline": {"mAP50": 0.523, "mAP50_95": 0.238, "precision": 0.598, "recall": 0.507, "f1": 0.549, "gpu_ms": 51.8,  "gpu_fps": 19.3},
+    "rtdetrv2_improved": {"mAP50": 0.552, "mAP50_95": 0.242, "precision": 0.612, "recall": 0.531, "f1": 0.569, "gpu_ms": 51.5,  "gpu_fps": 19.4},
 }
 
 PER_CLASS_RESULTS = {

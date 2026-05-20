@@ -144,17 +144,27 @@ threshold.
 
 ---
 
-## Performance on CPU
+## Performance
 
-| Model              | CPU inference     | Notes                    |
+### GPU (Tesla T4) — measured during ablation study
+
+| Model              | ms / image | FPS  |
+| ------------------ | ---------- | ---- |
+| YOLOv11 Baseline   | 25.9 ms    | 38.6 |
+| YOLOv11 Improved   | 26.8 ms    | 37.3 |
+| RT-DETRv2 Baseline | 51.8 ms    | 19.3 |
+| RT-DETRv2 Improved | 51.5 ms    | 19.4 |
+
+### CPU (approximate, no ONNX)
+
+| Model              | Approx. latency   | Notes                    |
 | ------------------ | ----------------- | ------------------------ |
 | YOLOv11 Baseline   | ~100–250 ms/frame | Fast for demo            |
 | YOLOv11 Improved   | ~120–280 ms/frame | Similar speed            |
 | RT-DETRv2 Baseline | ~400–700 ms/frame | Slower but more accurate |
 | RT-DETRv2 Improved | ~400–700 ms/frame | Best accuracy            |
 
-> With ONNX + `onnxruntime`, CPU inference is roughly **2× faster** than
-> PyTorch.
+> With ONNX + `onnxruntime`, CPU inference is roughly **2× faster** than PyTorch.
 
 ---
 

@@ -393,10 +393,10 @@ const CLASS_INFO = {
 };
 
 const MODEL_SPECS = {
-  yolov11_baseline:  { arch: 'YOLOv11m CNN',    params: '20M', gflops: '67.7', latency: '~19ms' },
-  yolov11_improved:  { arch: 'YOLOv11m CNN+P2', params: '20M', gflops: '67.7', latency: '~19ms' },
-  rtdetrv2_baseline: { arch: 'RT-DETRv2-L',     params: '32M', gflops: '103.5', latency: '~29ms' },
-  rtdetrv2_improved: { arch: 'RT-DETRv2-L',     params: '32M', gflops: '103.5', latency: '~29ms' },
+  yolov11_baseline:  { arch: 'YOLOv11m CNN',    params: '20M', gflops: '67.7', latency: '25.9ms (38.6 FPS)' },
+  yolov11_improved:  { arch: 'YOLOv11m CNN+P2', params: '20M', gflops: '67.7', latency: '26.8ms (37.3 FPS)' },
+  rtdetrv2_baseline: { arch: 'RT-DETRv2-L',     params: '32M', gflops: '103.5', latency: '51.8ms (19.3 FPS)' },
+  rtdetrv2_improved: { arch: 'RT-DETRv2-L',     params: '32M', gflops: '103.5', latency: '51.5ms (19.4 FPS)' },
 };
 
 let loadedModels = {};
