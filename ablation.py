@@ -716,7 +716,7 @@ def plot_detection_grid(models_loaded: List[dict], sample_images: List[str], out
 
 # ─── Results Table ────────────────────────────────────────────────────────────
 
-def print_results_table(results: List[dict]) -> pd.DataFrame:
+def print_results_table(results: List[dict], timing_data: Optional[Dict[str, float]] = None) -> pd.DataFrame:
     table = Table(title="Ablation Study — Final Metrics", show_header=True, header_style="bold cyan")
     table.add_column("Model",       style="white", min_width=22)
     table.add_column("mAP@50",      justify="right")
@@ -725,6 +725,9 @@ def print_results_table(results: List[dict]) -> pd.DataFrame:
     table.add_column("Recall",      justify="right")
     table.add_column("F1",          justify="right")
     table.add_column("ΔmAP@50",     justify="right")
+    if timing_data:
+        table.add_column("ms/img",  justify="right")
+        table.add_column("FPS",     justify="right")
 
     baseline_mAP = next(
         (r["metrics"].get("mAP50", 0) for r in results if "baseline" in r["name"]),
@@ -739,7 +742,8 @@ def print_results_table(results: List[dict]) -> pd.DataFrame:
         delta = m.get("mAP50", 0) - baseline_mAP
         sign  = "+" if delta > 0 else ""
         color = "green" if delta > 0 else ("red" if delta < 0 else "white")
-        table.add_row(
+
+        row_vals = [
             r["label"],
             f"{m.get('mAP50', 0):.4f}",
             f"{m.get('mAP50_95', 0):.4f}",
@@ -747,18 +751,46 @@ def print_results_table(results: List[dict]) -> pd.DataFrame:
             f"{rec:.4f}",
             f"{f1:.4f}",
             f"[{color}]{sign}{delta:.4f}[/{color}]",
-        )
-        rows.append({
+        ]
+        csv_row = {
             "Model":     r["label"],
             "mAP50":     m.get("mAP50", 0),
             "mAP50_95":  m.get("mAP50_95", 0),
             "Precision": p,
             "Recall":    rec,
             "F1":        f1,
-        })
+        }
+
+        if timing_data:
+            t_ms = timing_data.get(r["name"])
+            if t_ms is not None:
+                fps = 1000.0 / t_ms
+                row_vals += [f"{t_ms:.1f}", f"{fps:.1f}"]
+                csv_row["Latency_ms"] = round(t_ms, 1)
+                csv_row["FPS"]        = round(fps, 1)
+            else:
+                row_vals += ["—", "—"]
+
+        table.add_row(*row_vals)
+        rows.append(csv_row)
 
     console.print(table)
     return pd.DataFrame(rows)
+
+
+def print_timing_summary(timing_data: Dict[str, float]):
+    """Print a clean, copy-pasteable latency summary after the full run."""
+    table = Table(title="Inference Latency Summary", show_header=True, header_style="bold magenta")
+    table.add_column("Model",   style="white", min_width=24)
+    table.add_column("ms/img",  justify="right")
+    table.add_column("FPS",     justify="right")
+
+    for name, t_ms in timing_data.items():
+        fps = 1000.0 / t_ms if t_ms > 0 else 0.0
+        table.add_row(name, f"{t_ms:.1f}", f"{fps:.1f}")
+
+    console.print()
+    console.print(table)
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -857,13 +889,9 @@ def main():
                     "recall":    last.get("recall", 0),
                 }})
 
-    # ── Print and save results table ──────────────────────────────────────────
-    if results:
-        console.print()
-        df = print_results_table(results)
-        csv_path = output_dir / "ablation_results.csv"
-        df.to_csv(csv_path, index=False)
-        console.print(f"[green]Results CSV → {csv_path}[/green]")
+    # timing_data filled in the ROC/timing block below; initialise empty here
+    # so it's available when we print the table at the end
+    timing_data: Dict[str, float] = {}
 
     # ── Generate static plots ─────────────────────────────────────────────────
     console.print("\n[bold]Generating plots...[/bold]")
@@ -879,10 +907,9 @@ def main():
         plot_metric_curves(histories, output_dir)
 
     # ── ROC curves and timing (require running predict on val images) ─────────
+    roc_data: Dict[str, dict] = {}
     if not args.curves_only and not args.no_roc and models_loaded:
         console.print("\n[bold]Computing ROC curves and timing...[/bold]")
-        roc_data:    Dict[str, dict]  = {}
-        timing_data: Dict[str, float] = {}
 
         for entry in models_loaded:
             name  = entry["name"]
@@ -902,12 +929,34 @@ def main():
         plot_roc_curves(roc_data, output_dir)
         plot_timing_comparison(timing_data, output_dir, device=args.device)
 
+        # Save timing numbers to JSON for easy reference
+        if timing_data:
+            timing_export = {
+                name: {"ms_per_image": round(ms, 2), "fps": round(1000.0 / ms, 2)}
+                for name, ms in timing_data.items()
+            }
+            timing_json_path = output_dir / "timing_results.json"
+            with open(timing_json_path, "w") as f:
+                json.dump(timing_export, f, indent=2)
+            console.print(f"[green]Timing JSON → {timing_json_path}[/green]")
+
     # ── Detection grid ────────────────────────────────────────────────────────
     if not args.no_detection and models_loaded:
         console.print(f"\n[bold]Running detection on {args.num_samples} sample images...[/bold]")
         samples = collect_sample_images(data_dir, n=args.num_samples)
         if samples:
             plot_detection_grid(models_loaded, samples, output_dir)
+
+    # ── Final results table + CSV (printed last so timing is included) ────────
+    if results:
+        console.print()
+        df = print_results_table(results, timing_data=timing_data or None)
+        csv_path = output_dir / "ablation_results.csv"
+        df.to_csv(csv_path, index=False)
+        console.print(f"[green]Results CSV → {csv_path}[/green]")
+
+    if timing_data:
+        print_timing_summary(timing_data)
 
     console.print(Panel(
         f"All outputs in [bold cyan]{output_dir}[/bold cyan]",

@@ -420,7 +420,7 @@ async def predict_video(
             "total_detections":  len(all_dets),
             "class_counts":      _class_counts(all_dets),
             "per_frame":         frame_data,
-            "ffmpeg_used":       FFMPEG_OK,
+            "ffmpeg_used":       FFMPEG_BIN is not None,
         })
 
     finally:
